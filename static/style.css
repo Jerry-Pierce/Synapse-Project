@@ -1,0 +1,222 @@
+/* static/style.css - 최종 완성본 */
+
+/* --- 기본 스타일 --- */
+body { background-color: #f4f4f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; text-align: center; padding-top: 80px; padding-bottom: 50px; color: #333; transition: background-color 0.3s, color 0.3s; margin: 0; }
+h1, h2 { color: #5c67f2; }
+h3 { margin-top: 0; }
+.container { max-width: 800px; margin: 20px auto; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); transition: background-color 0.3s; }
+
+/* --- 헤더 및 네비게이션 --- */
+header { background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 0 20px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; }
+nav { max-width: 1000px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; height: 60px; }
+.brand { font-size: 1.5em; font-weight: bold; color: #5c67f2; text-decoration: none; }
+.user-info { display: flex; align-items: center; }
+.user-info a { margin-left: 15px; text-decoration: none; color: #007bff; font-weight: 500; }
+.user-info .welcome-text { font-weight: bold; margin-right: 15px; }
+.nav-links { margin-bottom: 20px; }
+
+/* --- 폼 및 버튼 공통 스타일 --- */
+form { display: flex; gap: 10px; margin-top: 30px; align-items: center; }
+input[type="text"], input[type="password"], input[type="number"], input[type="date"] { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1em; }
+input[type="text"] { flex-grow: 1; }
+button[type="submit"] { padding: 12px 20px; border: none; background-color: #5c67f2; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; }
+
+/* --- 목표 목록 스타일 --- */
+.goal-list-container { margin-top: 40px; text-align: left; }
+ul { list-style-type: none; padding: 0; }
+li { background-color: #fafafa; padding: 15px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #5c67f2; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.3s, border-color 0.3s; }
+.goal-text { flex-grow: 1; display: flex; align-items: center; flex-wrap: wrap; }
+.goal-text small { color: #888; margin-left: 10px; }
+.goal-actions { display: flex; gap: 10px; }
+.delete-btn, .toggle-btn { padding: 8px 12px; font-size: 0.9em; border: none; color: white; border-radius: 6px; cursor: pointer; }
+.delete-btn { background-color: #ff4d4d; }
+.toggle-btn { background-color: #28a745; }
+li.completed span { text-decoration: line-through; color: #aaa; }
+li.completed { border-left-color: #28a745; }
+
+/* --- 플레이어 정보 및 네비게이션 --- */
+.player-stats { background-color: #e9ecef; padding: 10px 20px; border-radius: 6px; margin: 20px 0; display: inline-block; font-size: 1.1em; transition: background-color 0.3s; }
+.ticket-count { font-weight: bold; color: #007bff; margin-left: 8px; }
+.nav-link { display: inline-block; margin-top: 20px; margin-left: 10px; padding: 10px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; }
+
+/* --- 게임 및 상점 스타일 --- */
+.game-area, .shop-grid { margin-top: 30px; }
+.score-display { font-size: 2em; font-weight: bold; margin: 20px 0; color: #28a745; }
+.play-btn { padding: 15px 30px; font-size: 1.2em; cursor: pointer; border: none; border-radius: 8px; color: white; background-color: #ffc107; font-weight: bold; transition: transform 0.1s; }
+.play-btn:active { transform: scale(0.95); }
+.error-msg { color: #ff4d4d; margin-top: 15px; height: 20px; font-weight: bold; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; margin-top: 30px; }
+.shop-item { border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; background-color: #fff; transition: box-shadow 0.2s, background-color 0.3s; display: flex; flex-direction: column; }
+.shop-item:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+.item-icon { font-size: 3em; }
+.item-name { font-weight: bold; margin: 10px 0; }
+.item-price { color: #6c757d; margin-bottom: 15px; }
+.shop-item form { margin-top: auto; width: 100%; }
+.buy-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; background-color: #28a745; color: white; font-weight: bold; cursor: pointer; }
+.buy-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
+
+/* --- 프로필 페이지 스타일 --- */
+.profile-card { border: 1px solid #ddd; border-radius: 8px; margin-top: 30px; text-align: left; }
+.profile-header { background-color: #f8f9fa; padding: 20px; border-bottom: 1px solid #ddd; }
+.profile-body { padding: 20px; }
+.stat-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+.stat-item:last-child { border-bottom: none; }
+.stat-item span:first-child { font-weight: bold; }
+.badge-management { margin-top: 40px; text-align: left; }
+.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; margin-top: 20px; }
+.badge-item { border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; background-color: #fff; display: flex; flex-direction: column; }
+.badge-icon-large { font-size: 4em; }
+.badge-name { font-weight: bold; margin: 10px 0; }
+.equip-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; background-color: #007bff; color: white; font-weight: bold; cursor: pointer; margin-top: auto; }
+.equip-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
+
+/* --- 게임 선택 및 카드 게임 스타일 --- */
+.game-selection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; margin-top: 30px; }
+.game-card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; background-color: #fff; transition: box-shadow 0.2s, background-color 0.3s; display: flex; flex-direction: column; min-height: 250px; }
+.game-card-link { text-decoration: none; color: inherit; }
+.game-card:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+.game-icon { font-size: 3em; margin-top: auto; padding-top: 20px; }
+.player-stats-mini { margin-top: 15px; font-size: 0.9em; color: #6c757d; }
+.guess-form { flex-direction: column; }
+.guess-form input { margin-bottom: 10px; }
+.hidden { display: none !important; }
+.memory-game-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; perspective: 1000px; }
+.memory-card { width: 100%; height: 100px; position: relative; transform-style: preserve-3d; transition: transform 0.5s; cursor: pointer; }
+.memory-card.flip { transform: rotateY(180deg); }
+.front-face, .back-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; justify-content: center; align-items: center; font-size: 2.5em; border-radius: 8px; }
+.front-face { background-color: #e9ecef; transform: rotateY(180deg); }
+.back-face { background-color: #5c67f2; color: white; }
+.win-message { margin-top: 20px; }
+
+/* --- 유저 시스템 및 플래시 메시지 --- */
+.auth-container { max-width: 400px; margin: 40px auto; padding: 30px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+.auth-form { flex-direction: column; }
+.auth-form input { margin-bottom: 15px; }
+.auth-container p { margin-top: 20px; }
+.flash-messages { max-width: 800px; margin: 0 auto 15px auto; padding: 0; list-style: none; }
+.flash { padding: 15px; border-radius: 6px; color: #fff; font-weight: bold; text-align: left; }
+.flash-success { background-color: #28a745; }
+.flash-error { background-color: #dc3545; }
+.flash-info { background-color: #17a2b8; }
+.flash-success-special { background-color: #28a745; position: relative; }
+
+/* --- 보상형 광고 스타일 --- */
+.ad-button { background-color: #fd7e14; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin: 10px 0; font-size: 1em; }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+.modal-content { background-color: white; padding: 30px; border-radius: 8px; text-align: center; }
+.spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto 0 auto; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+/* --- 테마 시스템 --- */
+.dark-theme { background-color: #1a1a2e; color: #e0e0e0; }
+.dark-theme .container, .dark-theme .auth-container, .dark-theme .modal-content { background-color: #16213e; }
+.dark-theme header { background-color: #16213e; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+.dark-theme .brand, .dark-theme h1, .dark-theme h2 { color: #e94560; }
+.dark-theme li { background-color: #1a1a2e; border-left-color: #e94560; }
+.dark-theme li.completed { border-left-color: #00ffab; }
+.dark-theme li.completed span, .dark-theme li.completed small { color: #6c757d; }
+.dark-theme .player-stats { background-color: #0f3460; }
+.dark-theme .shop-item { background-color: #1a1a2e; border-color: #0f3460; }
+.dark-theme .item-price { color: #aaa; }
+.dark-theme .profile-card { border-color: #0f3460; }
+.dark-theme .profile-header { background-color: #1a1a2e; border-bottom-color: #0f3460; }
+.dark-theme .stat-item { border-bottom-color: #1a1a2e; }
+.dark-theme .game-card { background-color: #1a1a2e; border-color: #0f3460; }
+.dark-theme .front-face { background-color: #0f3460; }
+.dark-theme .back-face { background-color: #e94560; }
+.dark-theme .badge-item { background-color: #1a1a2e; border-color: #0f3460; }
+
+/* --- 반응형 웹 디자인 --- */
+@media (max-width: 768px) {
+    body { padding-top: 70px; }
+    .container { margin: 10px; padding: 15px; }
+    nav { padding: 0 10px; }
+    .user-info .welcome-text { display: none; }
+    li { flex-direction: column; align-items: flex-start; }
+    .goal-actions { margin-top: 10px; width: 100%; }
+    .goal-actions form, .goal-actions button { flex-grow: 1; }
+    .game-selection-grid { grid-template-columns: 1fr; }
+    .shop-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* --- 클릭커 게임 효과 --- */
+.clicker-area { position: relative; overflow: hidden; }
+.floating-score { position: absolute; font-size: 1.5em; font-weight: bold; color: #ffc107; pointer-events: none; animation: float-up 1s ease-out forwards; transform: translateX(-50%); }
+@keyframes float-up { 0% { transform: translate(-50%, 0); opacity: 1; } 100% { transform: translate(-50%, -50px); opacity: 0; } }
+
+/* --- 뱃지 장착 시스템 --- */
+.equipped-badge { font-size: 1.2em; margin-right: 8px; }
+
+/* --- 리더보드 스타일 --- */
+.leaderboard { margin-top: 30px; }
+.leaderboard table { width: 100%; border-collapse: collapse; }
+.leaderboard th, .leaderboard td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+.leaderboard th { background-color: #f8f9fa; }
+.leaderboard .current-user { font-weight: bold; background-color: #e9ecef; }
+.dark-theme .leaderboard th { background-color: #1a1a2e; border-bottom-color: #0f3460; }
+.dark-theme .leaderboard td { border-bottom-color: #1a1a2e; }
+.dark-theme .leaderboard .current-user { background-color: #0f3460; }
+
+/* --- 대시보드 스타일 --- */
+.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
+.stat-card { background-color: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }
+.stat-value { font-size: 2.5em; font-weight: bold; margin-top: 10px; }
+.dark-theme .stat-card { background-color: #1a1a2e; border-color: #0f3460; }
+
+/* --- 반복 목표 스타일 --- */
+.checkbox-wrapper { display: flex; align-items: center; gap: 5px; margin-left: 10px; white-space: nowrap; }
+.recurring-icon { margin-right: 8px; font-size: 1.1em; }
+
+/* --- 설정 페이지 스타일 --- */
+.settings-section { margin-top: 40px; text-align: left; border-top: 1px solid #ddd; padding-top: 30px; }
+.settings-form { flex-direction: column; align-items: flex-start; gap: 15px; max-width: 400px; }
+.settings-form input { width: 100%; }
+.settings-form button { width: auto; }
+.warning-text { background-color: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px; color: #856404; }
+.dark-theme .settings-section { border-top-color: #0f3460; }
+.dark-theme .warning-text { background-color: #3e300a; border-color: #5e4914; color: #ffeca7; }
+
+/* --- 드롭다운 메뉴 스타일 --- */
+.dropdown { position: relative; display: inline-block; }
+.menu-btn { background: none; border: none; font-size: 1.5em; cursor: pointer; padding: 0 10px; }
+.dropdown-content { display: none; position: absolute; right: 0; background-color: #f9f9f9; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; border-radius: 6px; }
+.dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; text-align: left; margin: 0; }
+.dropdown-content a:hover { background-color: #f1f1f1; }
+.show { display: block; }
+.dark-theme .dropdown-content { background-color: #16213e; }
+.dark-theme .dropdown-content a { color: #e0e0e0; }
+.dark-theme .dropdown-content a:hover { background-color: #0f3460; }
+
+/* --- 언어 전환 스타일 --- */
+.language-switcher { margin-right: 15px; }
+.language-switcher a { color: #bbb; font-weight: bold; text-decoration: none; }
+.language-switcher a.active { color: #007bff; }
+.language-switcher span { margin: 0 5px; color: #ddd; }
+
+/* --- 마감일 스타일 --- */
+.deadline-input { flex-grow: 0; width: auto; }
+.deadline-text { font-size: 0.8em; color: #6c757d; margin-left: 10px; }
+li.overdue .deadline-text { color: #ff4d4d; font-weight: bold; }
+.dark-theme .deadline-text { color: #aaa; }
+.dark-theme li.overdue .deadline-text { color: #e94560; }
+
+/* --- 차트 스타일 --- */
+.chart-container { background-color: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+.dark-theme .chart-container { background-color: #1a1a2e; border-color: #0f3460; }
+
+/* --- 랜딩 페이지 스타일 --- */
+.welcome-container { max-width: 100%; padding: 0; }
+.hero-section { padding: 80px 20px; background: linear-gradient(45deg, #5c67f2, #17a2b8); color: white; }
+.hero-section h1 { font-size: 3em; color: white; margin-bottom: 20px; }
+.subtitle { font-size: 1.2em; max-width: 600px; margin: 0 auto 30px auto; line-height: 1.6; }
+.cta-buttons { display: flex; justify-content: center; gap: 20px; }
+.cta-buttons .btn { margin: 0; padding: 15px 30px; border-radius: 30px; text-decoration: none; font-weight: bold; font-size: 1.1em; transition: transform 0.2s, box-shadow 0.2s; }
+.cta-buttons .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+.btn-primary { background-color: #ffc107; color: #333; }
+.btn-secondary { background-color: transparent; border: 2px solid white; color: white; }
+
+/* --- 자동 로그인 및 비밀번호 찾기 --- */
+.auth-checkbox { flex-direction: row; justify-content: flex-start; margin-top: 0; margin-bottom: 15px; gap: 8px; align-items: center; }
+.auth-checkbox input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+.auth-options { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 0; margin-bottom: 15px; }
+.forgot-link { font-size: 0.9em; margin: 0; }

@@ -1,0 +1,34 @@
+<!-- templates/shop.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.item_shop }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.item_shop }}</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('profile') }}" class="nav-link" style="background-color: #6f42c1;">{{ t.my_profile }} 👤</a>
+            <a href="{{ url_for('index') }}" class="nav-link">{{ t.back_to_goal_list }}</a>
+        </div>
+        <div class="player-stats">
+            <span>{{ t.my_score }}</span>
+            <span class="ticket-count" style="color: #28a745;">{{ player_score }} ✨</span>
+        </div>
+
+        <div class="shop-grid">
+            {% for item_id, item_info in items.items() %}
+            <div class="shop-item">
+                <div class="item-icon">{{ item_info.icon }}</div>
+                <div class="item-name">{{ item_info.name }}</div>
+                <div class="item-price">{{ item_info.price }} Score</div>
+                
+                <form action="{{ url_for('buy_item', item_id=item_id) }}" method="POST">
+                    {% if item_id in player_items %}
+                        <button type="submit" class="buy-btn" disabled>{{ t.owned }}</button>
+                    {% else %}
+                        <button type="submit" class="buy-btn" {{ 'disabled' if player_score < item_info.price else '' }}>{{ t.buy }}</button>
+                    {% endif %}
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock %}

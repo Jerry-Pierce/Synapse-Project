@@ -1,0 +1,65 @@
+<!-- templates/game_room.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.game_room }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.game_room }}</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('profile') }}" class="nav-link" style="background-color: #6f42c1;">{{ t.my_profile }} 👤</a>
+            <a href="{{ url_for('shop') }}" class="nav-link" style="background-color: #17a2b8;">{{ t.go_to_shop }} 🏪</a>
+            <a href="{{ url_for('index') }}" class="nav-link">{{ t.back_to_goal_list }}</a>
+        </div>
+        
+        <div class="game-selection-grid">
+            <!-- 클릭커 게임 카드 -->
+            <div class="game-card">
+                <h2>{{ t.clicker_game }}</h2>
+                <p>{{ t.clicker_game_desc }}</p>
+                <div class="score-display">{{ t.score }} <span id="score-display">{{ player_data.score }}</span></div>
+                <button id="play-button" class="play-btn">{{ t.play_ticket }}</button>
+                <p id="error-message" class="error-msg"></p>
+                <div class="player-stats-mini">{{ t.tickets }} <span id="ticket-display">{{ player_data.tickets }} 🎟️</span></div>
+            </div>
+
+            <!-- 숫자 맞추기 게임 카드 -->
+            <a href="{{ url_for('guess_the_number') }}" class="game-card-link">
+                <div class="game-card">
+                    <h2>{{ t.guess_the_number }}</h2>
+                    <p>{{ t.guess_the_number_desc }}</p>
+                    <div class="game-icon">🎲</div>
+                </div>
+            </a>
+
+            <!-- 기억력 카드 게임 카드 -->
+            <a href="{{ url_for('memory_game') }}" class="game-card-link">
+                <div class="game-card">
+                    <h2>{{ t.memory_cards }}</h2>
+                    <p>{{ t.memory_cards_desc }}</p>
+                    <div class="game-icon">🧠</div>
+                </div>
+            </a>
+        </div>
+    </div>
+    <script>
+        const playButton = document.getElementById('play-button');
+        const ticketDisplay = document.getElementById('ticket-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const errorMessage = document.getElementById('error-message');
+        
+        playButton.addEventListener('click', function() {
+            fetch('/play_clicker_game', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    ticketDisplay.textContent = data.tickets + ' 🎟️';
+                    scoreDisplay.textContent = data.score;
+                    errorMessage.textContent = '';
+                } else {
+                    errorMessage.textContent = data.message;
+                }
+            });
+        });
+    </script>
+{% endblock %}

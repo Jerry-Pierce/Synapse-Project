@@ -1,0 +1,42 @@
+<!-- templates/profile.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.my_profile }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.my_profile }}</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}" class="nav-link">{{ t.back_to_goal_list }}</a>
+        </div>
+        <div class="profile-card">
+            <div class="profile-header">
+                <h2>{{ t.player_stats }}</h2>
+            </div>
+            <div class="profile-body">
+                <div class="stat-item"><span>{{ t.total_score }}</span><span>{{ player.score }} ✨</span></div>
+                <div class="stat-item"><span>{{ t.tickets }}</span><span>{{ player.tickets }} 🎟️</span></div>
+                <div class="stat-item"><span>{{ t.items_owned }}</span><span>{{ player['items']|length }}</span></div>
+            </div>
+        </div>
+
+        <div class="badge-management">
+            <h2>{{ t.my_badges }}</h2>
+            <div class="badge-grid">
+                {% for badge_id, badge_info in badges.items() %}
+                    <div class="badge-item">
+                        <div class="badge-icon-large">{{ badge_info.icon }}</div>
+                        <div class="badge-name">{{ badge_info.name }}</div>
+                        <form action="{{ url_for('equip_badge', item_id=badge_id) }}" method="POST">
+                            {% if player.equipped_badge == badge_id %}
+                                <button type="submit" class="equip-btn" disabled>{{ t.equipped }}</button>
+                            {% else %}
+                                <button type="submit" class="equip-btn">{{ t.equip }}</button>
+                            {% endif %}
+                        </form>
+                    </div>
+                {% else %}
+                    <p>{{ t.no_badges_yet }}</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

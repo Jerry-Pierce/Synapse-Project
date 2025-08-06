@@ -1,0 +1,167 @@
+<!-- templates/index.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.dashboard }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.brand }} Project</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('profile') }}" class="nav-link" style="background-color: #6f42c1;">{{ t.my_profile }} 👤</a>
+            <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.go_to_game_room }} 🎮</a>
+            <a href="{{ url_for('shop') }}" class="nav-link" style="background-color: #17a2b8;">{{ t.go_to_shop }} 🏪</a>
+        </div>
+
+        <div class="player-stats">
+            <span>{{ t.my_tickets }}</span>
+            <span id="ticket-display" class="ticket-count">{{ tickets }} 🎟️</span>
+        </div>
+        
+        <button id="watch-ad-btn" class="ad-button">{{ t.watch_ad_for_ticket }}</button>
+
+        <p>{{ t.turn_goals_into_quests }}</p>
+
+        <form id="add-goal-form" method="POST">
+            <input id="goal-input" type="text" name="goal" placeholder="{{ t.enter_new_goal }}" required>
+            <input type="date" name="deadline" class="deadline-input">
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="is_recurring" name="is_recurring">
+                <label for="is_recurring">{{ t.daily_goal }} 🔄</label>
+            </div>
+            <button type="submit">{{ t.add_goal }}</button>
+        </form>
+
+        <div class="goal-list-container">
+            <h2>{{ t.my_goals }}</h2>
+            <ul id="goal-list">
+                {% for goal in goal_list %}
+                    <li class="{{ 'completed' if goal.status == 'Completed' else '' }} {{ 'overdue' if goal.deadline and goal.deadline < today and goal.status != 'Completed' else '' }}" data-id="{{ loop.index0 }}">
+                        <div class="goal-text">
+                            {% if goal.type == 'recurring' %}
+                                <span class="recurring-icon">🔄</span>
+                            {% endif %}
+                            <span>{{ goal.text }}</span>
+                            {% if goal.deadline %}
+                                <span class="deadline-text"> ({{ t.deadline }}: {{ goal.deadline }})</span>
+                            {% endif %}
+                        </div>
+                        <div class="goal-actions">
+                            <button class="toggle-btn" data-action="toggle">{{ t.toggle }}</button>
+                            <button class="delete-btn" data-action="delete">{{ t.delete }}</button>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div id="ad-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>{{ t.watching_ad }}</h2>
+            <p>{{ t.ad_reward_message }} <span id="ad-timer">5</span> {{ t.seconds }}.</p>
+            <div class="spinner"></div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const addGoalForm = document.getElementById('add-goal-form');
+    const goalInput = document.getElementById('goal-input');
+    const goalList = document.getElementById('goal-list');
+    const ticketDisplay = document.getElementById('ticket-display');
+    const translations = {{ t | tojson | safe }};
+    const today = "{{ today }}";
+
+    function renderGoals(goals) {
+        goalList.innerHTML = '';
+        goals.forEach((goal, index) => {
+            const li = document.createElement('li');
+            const isCompleted = goal.status === 'Completed';
+            const isOverdue = goal.deadline && goal.deadline < today && !isCompleted;
+
+            li.className = `${isCompleted ? 'completed' : ''} ${isOverdue ? 'overdue' : ''}`.trim();
+            li.dataset.id = index;
+
+            const recurringIcon = goal.type === 'recurring' ? '<span class="recurring-icon">🔄</span>' : '';
+            const deadlineText = goal.deadline ? `<span class="deadline-text"> (${translations.deadline}: ${goal.deadline})</span>` : '';
+            
+            li.innerHTML = `
+                <div class="goal-text">
+                    ${recurringIcon}
+                    <span>${goal.text}</span>
+                    ${deadlineText}
+                </div>
+                <div class="goal-actions">
+                    <button class="toggle-btn" data-action="toggle">${translations.toggle}</button>
+                    <button class="delete-btn" data-action="delete">${translations.delete}</button>
+                </div>
+            `;
+            goalList.appendChild(li);
+        });
+    }
+
+    addGoalForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const formData = new FormData(this);
+        fetch("{{ url_for('add_goal') }}", {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderGoals(data.goals);
+                goalInput.value = '';
+                document.querySelector('.deadline-input').value = '';
+                document.getElementById('is_recurring').checked = false;
+            }
+        });
+    });
+
+    goalList.addEventListener('click', function(event) {
+        const target = event.target;
+        if (target.tagName !== 'BUTTON') return;
+        const action = target.dataset.action;
+        const goalId = target.closest('li').dataset.id;
+        let url = '';
+        if (action === 'toggle') { url = `/toggle/${goalId}`; } 
+        else if (action === 'delete') { url = `/delete/${goalId}`; } 
+        else { return; }
+
+        fetch(url, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderGoals(data.goals);
+                    if (data.tickets !== undefined) {
+                        ticketDisplay.textContent = data.tickets + ' 🎟️';
+                    }
+                }
+            });
+    });
+
+    const watchAdBtn = document.getElementById('watch-ad-btn');
+    const adModal = document.getElementById('ad-modal');
+    const adTimer = document.getElementById('ad-timer');
+
+    watchAdBtn.addEventListener('click', () => {
+        adModal.classList.remove('hidden');
+        let timeLeft = 5;
+        adTimer.textContent = timeLeft;
+        const timerInterval = setInterval(() => {
+            timeLeft--;
+            adTimer.textContent = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                adModal.classList.add('hidden');
+                fetch('/get_ad_reward', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            ticketDisplay.textContent = data.tickets + ' 🎟️';
+                        }
+                    });
+            }
+        }, 1000);
+    });
+</script>
+{% endblock %}

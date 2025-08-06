@@ -1,0 +1,34 @@
+<!-- templates/leaderboard.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.leaderboard }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.hall_of_fame }}</h1>
+        <p>{{ t.leaderboard_desc }}</p>
+
+        <div class="leaderboard">
+            <table>
+                <thead>
+                    <tr>
+                        <th>{{ t.rank }}</th>
+                        <th>{{ t.player }}</th>
+                        <th>{{ t.score }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for player in players %}
+                        <tr class="{{ 'current-user' if player.username == session.username }}">
+                            <td>{{ loop.index }}</td>
+                            <td>{{ player.username }}</td>
+                            <td>{{ player.score }} ✨</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="3">{{ t.no_players_yet }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

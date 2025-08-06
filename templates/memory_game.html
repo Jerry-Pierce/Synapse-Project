@@ -1,0 +1,143 @@
+<!-- templates/memory_game.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.memory_cards }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.memory_cards }}</h1>
+
+        <div class="player-stats">
+            <span>{{ t.my_tickets }}</span>
+            <span id="ticket-display" class="ticket-count">{{ tickets }} 🎟️</span>
+        </div>
+
+        <div id="game-container" class="game-area">
+            <div id="start-screen">
+                <h2>{{ t.memory_game_start_title }}</h2>
+                <p>{{ t.memory_game_start_desc }}</p>
+                <button id="start-button" class="play-btn">{{ t.start_game }}</button>
+                <p id="start-error" class="error-msg"></p>
+            </div>
+            <div id="memory-game-board" class="memory-game-board hidden">
+                <!-- JavaScript will generate cards here -->
+            </div>
+            <div id="win-message" class="win-message hidden">
+                <h2>{{ t.you_win }}</h2>
+                <button id="play-again-button" class="play-btn">{{ t.play_again }}</button>
+            </div>
+        </div>
+
+        <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.back_to_game_room }}</a>
+    </div>
+
+    <script>
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
+        const startError = document.getElementById('start-error');
+        const gameBoard = document.getElementById('memory-game-board');
+        const winMessage = document.getElementById('win-message');
+        const playAgainButton = document.getElementById('play-again-button');
+        const ticketDisplay = document.getElementById('ticket-display');
+
+        const cardsArray = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍒', '🍎', '🍌', '🍇', '🍉', '🍓', '🍒'];
+        let firstCard = null;
+        let secondCard = null;
+        let lockBoard = false;
+        let matchedPairs = 0;
+
+        function spendTickets(ticketCost) {
+            return fetch('/spend_ticket', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tickets: ticketCost })
+            })
+            .then(response => response.json());
+        }
+
+        function startGame() {
+            spendTickets(2).then(data => {
+                if (data.success) {
+                    ticketDisplay.textContent = data.tickets + ' 🎟️';
+                    startScreen.classList.add('hidden');
+                    winMessage.classList.add('hidden');
+                    gameBoard.classList.remove('hidden');
+                    resetGame();
+                } else {
+                    startError.textContent = "Not enough tickets!";
+                }
+            });
+        }
+
+        function resetGame() {
+            gameBoard.innerHTML = '';
+            matchedPairs = 0;
+            cardsArray.sort(() => 0.5 - Math.random());
+            cardsArray.forEach(item => {
+                const card = document.createElement('div');
+                card.classList.add('memory-card');
+                card.dataset.value = item;
+                card.innerHTML = `<div class="front-face">${item}</div><div class="back-face">?</div>`;
+                card.addEventListener('click', flipCard);
+                gameBoard.appendChild(card);
+            });
+        }
+
+        function flipCard() {
+            if (lockBoard) return;
+            if (this === firstCard) return;
+
+            this.classList.add('flip');
+
+            if (!firstCard) {
+                firstCard = this;
+                return;
+            }
+
+            secondCard = this;
+            lockBoard = true;
+
+            checkForMatch();
+        }
+
+        function checkForMatch() {
+            let isMatch = firstCard.dataset.value === secondCard.dataset.value;
+            isMatch ? disableCards() : unflipCards();
+        }
+
+        function disableCards() {
+            firstCard.removeEventListener('click', flipCard);
+            secondCard.removeEventListener('click', flipCard);
+            matchedPairs++;
+            resetBoard();
+            if (matchedPairs === cardsArray.length / 2) {
+                setTimeout(showWinScreen, 500);
+            }
+        }
+
+        function showWinScreen() {
+             fetch('/memory_game_reward', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if(data.success) {
+                        gameBoard.classList.add('hidden');
+                        winMessage.classList.remove('hidden');
+                    }
+                });
+        }
+
+        function unflipCards() {
+            setTimeout(() => {
+                firstCard.classList.remove('flip');
+                secondCard.classList.remove('flip');
+                resetBoard();
+            }, 1000);
+        }
+
+        function resetBoard() {
+            [firstCard, secondCard, lockBoard] = [null, null, false];
+        }
+
+        startButton.addEventListener('click', startGame);
+        playAgainButton.addEventListener('click', startGame);
+
+    </script>
+{% endblock %}

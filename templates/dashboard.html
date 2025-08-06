@@ -1,0 +1,71 @@
+<!-- templates/dashboard.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.dashboard }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.my_progress_dashboard }}</h1>
+        <p>{{ t.dashboard_desc }}</p>
+
+        <div class="chart-container">
+            <h3>{{ t.weekly_completion }}</h3>
+            <canvas id="completionChart" 
+                    data-labels='{{ chart_labels | tojson | safe }}'
+                    data-data='{{ chart_data | tojson | safe }}'
+                    data-label='{{ t.goals_completed }}'></canvas>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="stat-card">
+                <h3>{{ t.total_score }}</h3>
+                <div class="stat-value">{{ stats.score }} ✨</div>
+            </div>
+            <div class="stat-card">
+                <h3>{{ t.tickets }}</h3>
+                <div class="stat-value">{{ stats.tickets }} 🎟️</div>
+            </div>
+            <div class="stat-card">
+                <h3>{{ t.goals_completed }}</h3>
+                <div class="stat-value">{{ stats.completed_goals }} / {{ stats.total_goals }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>{{ t.completion_rate }}</h3>
+                <div class="stat-value">{{ stats.completion_rate }}%</div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const canvas = document.getElementById('completionChart');
+    const chartLabels = JSON.parse(canvas.dataset.labels);
+    const chartData = JSON.parse(canvas.dataset.data);
+    const chartDatasetLabel = canvas.dataset.label;
+
+    const ctx = canvas.getContext('2d');
+    const completionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: chartLabels,
+            datasets: [{
+                label: chartDatasetLabel,
+                data: chartData,
+                backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                borderColor: 'rgba(40, 167, 69, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+<!-- templates/guess_the_number.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.guess_the_number }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.guess_the_number }}</h1>
+
+        <div class="player-stats">
+            <span>{{ t.my_tickets }}</span>
+            <span class="ticket-count">{{ tickets }} 🎟️</span>
+        </div>
+
+        <div class="game-area">
+            <h2>{{ message if message else t.guess_message_default }}</h2>
+            <form action="{{ url_for('guess') }}" method="POST" class="guess-form">
+                <input type="number" name="guess" min="1" max="100" placeholder="{{ t.guess }}" required>
+                <button type="submit" class="play-btn">{{ t.guess }} (1 🎟️)</button>
+            </form>
+        </div>
+
+        <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.back_to_game_room }}</a>
+    </div>
+{% endblock %}

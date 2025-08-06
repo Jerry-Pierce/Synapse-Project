@@ -1,0 +1,29 @@
+<!-- templates/settings.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.settings }}{% endblock %}
+{% block content %}
+    <div class="container">
+        <h1>{{ t.account_settings }}</h1>
+        <p>{{ t.settings_desc }}</p>
+
+        <div class="settings-section">
+            <h2>{{ t.change_password }}</h2>
+            <form action="{{ url_for('change_password') }}" method="POST" class="settings-form">
+                <input type="password" name="current_password" placeholder="{{ t.current_password }}" required>
+                <input type="password" name="new_password" placeholder="{{ t.new_password }}" required>
+                <input type="password" name="confirm_password" placeholder="{{ t.confirm_new_password }}" required>
+                <button type="submit">{{ t.change_password }}</button>
+            </form>
+        </div>
+
+        <div class="settings-section">
+            <h2>{{ t.reset_progress }}</h2>
+            <p class="warning-text">
+                <strong>{{ t.reset_warning.split(':')[0] }}:</strong> {{ t.reset_warning.split(':')[1] }}
+            </p>
+            <form action="{{ url_for('reset_progress') }}" method="POST" class="settings-form">
+                <button type="submit" class="delete-btn" onclick="return confirm('Are you absolutely sure you want to reset all your game progress?');">{{ t.reset_my_progress }}</button>
+            </form>
+        </div>
+    </div>
+{% endblock %}

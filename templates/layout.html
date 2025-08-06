@@ -1,0 +1,79 @@
+<!-- templates/layout.html -->
+<!DOCTYPE html>
+<html lang="{{ session.get('lang', 'en') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} - {{ t.brand }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{{ theme if theme else 'light-theme' }}">
+
+    <header>
+        <nav>
+            <a href="{{ url_for('index') }}" class="brand">{{ t.brand }}</a>
+            <div class="user-info">
+                {% if session.username %}
+                    <span class="equipped-badge">{{ equipped_badge_icon }}</span>
+                    <span class="welcome-text">{{ t.welcome_message }}, {{ session.username }}!</span>
+                    
+                    <div class="language-switcher">
+                        <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if session.get('lang', 'en') == 'en' }}">EN</a>
+                        <span>/</span>
+                        <a href="{{ url_for('set_language', lang='ko') }}" class="{{ 'active' if session.get('lang', 'en') == 'ko' }}">KO</a>
+                    </div>
+
+                    <div class="dropdown">
+                        <button id="menu-btn" class="menu-btn">☰</button>
+                        <div id="dropdown-content" class="dropdown-content">
+                            <a href="{{ url_for('dashboard') }}">{{ t.dashboard }}</a>
+                            <a href="{{ url_for('leaderboard') }}">{{ t.leaderboard }}</a>
+                            <a href="{{ url_for('settings') }}">{{ t.settings }}</a>
+                            <a href="{{ url_for('logout') }}">{{ t.logout }}</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="language-switcher">
+                        <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if session.get('lang', 'en') == 'en' }}">EN</a>
+                        <span>/</span>
+                        <a href="{{ url_for('set_language', lang='ko') }}" class="{{ 'active' if session.get('lang', 'en') == 'ko' }}">KO</a>
+                    </div>
+                    <a href="{{ url_for('login') }}">{{ t.login }}</a>
+                    <a href="{{ url_for('register') }}">{{ t.register }}</a>
+                {% endif %}
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+    <script>
+        const menuBtn = document.getElementById('menu-btn');
+        const dropdownContent = document.getElementById('dropdown-content');
+        if (menuBtn) {
+            menuBtn.addEventListener('click', function() {
+                dropdownContent.classList.toggle('show');
+            });
+        }
+        window.onclick = function(event) {
+            if (menuBtn && !menuBtn.contains(event.target) && !dropdownContent.contains(event.target)) {
+                if (dropdownContent.classList.contains('show')) {
+                    dropdownContent.classList.remove('show');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
