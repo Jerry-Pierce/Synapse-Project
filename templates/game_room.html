@@ -11,15 +11,19 @@
         </div>
         
         <div class="game-selection-grid">
-            <!-- 클릭커 게임 카드 -->
-            <div class="game-card">
-                <h2>{{ t.clicker_game }}</h2>
-                <p>{{ t.clicker_game_desc }}</p>
-                <div class="score-display">{{ t.score }} <span id="score-display">{{ player_data.score }}</span></div>
-                <button id="play-button" class="play-btn">{{ t.play_ticket }}</button>
-                <p id="error-message" class="error-msg"></p>
-                <div class="player-stats-mini">{{ t.tickets }} <span id="ticket-display">{{ player_data.tickets }} 🎟️</span></div>
-            </div>
+            <!-- 2D MMORPG 게임 카드 -->
+            <a href="{{ url_for('mmorpg_game') }}" class="game-card-link">
+                <div class="game-card">
+                    <h2>{{ t.mmorpg_game }}</h2>
+                    <p>{{ t.mmorpg_game_desc }}</p>
+                    <div class="game-icon">🏰</div>
+                    <div class="player-stats-mini">
+                        {{ t.level }}: {{ player_data.level }} | 
+                        {{ t.exp }}: {{ player_data.exp }} | 
+                        {{ t.hp }}: {{ player_data.hp }}/100
+                    </div>
+                </div>
+            </a>
 
             <!-- 숫자 맞추기 게임 카드 -->
             <a href="{{ url_for('guess_the_number') }}" class="game-card-link">
@@ -40,26 +44,4 @@
             </a>
         </div>
     </div>
-    <script>
-        const playButton = document.getElementById('play-button');
-        const ticketDisplay = document.getElementById('ticket-display');
-        const scoreDisplay = document.getElementById('score-display');
-        const errorMessage = document.getElementById('error-message');
-        
-        playButton.addEventListener('click', function() {
-            fetch('/play_clicker_game', {
-                method: 'POST',
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    ticketDisplay.textContent = data.tickets + ' 🎟️';
-                    scoreDisplay.textContent = data.score;
-                    errorMessage.textContent = '';
-                } else {
-                    errorMessage.textContent = data.message;
-                }
-            });
-        });
-    </script>
 {% endblock %}

@@ -1,5 +1,6 @@
 # app.py
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session, flash
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import date, timedelta
 import json
@@ -7,10 +8,12 @@ import os
 import random
 import glob
 import string
+import uuid
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey_for_synapse'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # --- 상수 정의 ---
 USERS_FILE = 'users.json'
@@ -21,6 +24,13 @@ SHOP_ITEMS = {
     'item004': {'name': 'Cool Website Theme', 'price': 200, 'icon': '🎨'}
 }
 DAILY_LOGIN_REWARD = 5
+
+# MMORPG 게임 상태
+game_world = {
+    'players': {},  # {session_id: {username, x, y, level, exp, hp, last_seen}}
+    'monsters': {},  # {monster_id: {x, y, hp, type}}
+    'items': {}  # {item_id: {x, y, type}}
+}
 
 with open('translations.json', 'r', encoding='utf-8') as f:
     translations = json.load(f)
@@ -62,18 +72,45 @@ def save_user_goals(goals):
 def load_user_player_data():
     path = get_user_data_path('player')
     if path:
-        default_player_data = {'tickets': 0, 'score': 0, 'items': [], 'equipped_badge': None, 'last_login_date': None}
+        default_player_data = {'tickets': 0, 'score': 0, 'items': [], 'equipped_badge': None, 'last_login_date': None, 'level': 1, 'exp': 0, 'hp': 100}
         player_data = load_data(path, default_player_data)
         for key, value in default_player_data.items():
             if key not in player_data:
                 player_data[key] = value
         return player_data
-    return {'tickets': 0, 'score': 0, 'items': [], 'equipped_badge': None, 'last_login_date': None}
+    return {'tickets': 0, 'score': 0, 'items': [], 'equipped_badge': None, 'last_login_date': None, 'level': 1, 'exp': 0, 'hp': 100}
 
 def save_user_player_data(player_data):
     path = get_user_data_path('player')
     if path: save_data(player_data, path)
 
+# --- MMORPG 게임 함수들 ---
+def spawn_monsters():
+    """몬스터 생성"""
+    for i in range(5):  # 5마리 몬스터 유지
+        if len(game_world['monsters']) < 5:
+            monster_id = str(uuid.uuid4())
+            game_world['monsters'][monster_id] = {
+                'x': random.randint(50, 750),
+                'y': random.randint(50, 550),
+                'hp': 30,
+                'max_hp': 30,
+                'type': random.choice(['👹', '👾', '🤖'])
+            }
+
+def spawn_items():
+    """아이템 생성"""
+    if len(game_world['items']) < 3:
+        item_id = str(uuid.uuid4())
+        game_world['items'][item_id] = {
+            'x': random.randint(50, 750),
+            'y': random.randint(50, 550),
+            'type': random.choice(['💎', '⚔️', '🛡️', '💰'])
+        }
+
+# 게임 초기화
+spawn_monsters()
+spawn_items()
 
 # --- 유저 인증 경로 ---
 @app.route('/register', methods=['GET', 'POST'])
@@ -140,7 +177,6 @@ def forgot_password():
             return redirect(url_for('forgot_password'))
     return render_template('forgot_password.html', t=t)
 
-
 # --- 페이지 렌더링 경로 ---
 def get_common_render_data():
     player_data = load_user_player_data() if 'username' in session else None
@@ -176,6 +212,12 @@ def game_room():
     common_data = get_common_render_data()
     if not common_data or 'username' not in session: return redirect(url_for('login'))
     return render_template('game_room.html', **common_data)
+
+@app.route('/mmorpg_game')
+def mmorpg_game():
+    common_data = get_common_render_data()
+    if not common_data or 'username' not in session: return redirect(url_for('login'))
+    return render_template('mmorpg_game.html', **common_data)
 
 @app.route('/shop')
 def shop():
@@ -253,7 +295,6 @@ def settings():
     if not common_data or 'username' not in session: return redirect(url_for('login'))
     return render_template('settings.html', **common_data)
 
-
 # --- 데이터 처리 경로 ---
 @app.route('/add_goal', methods=['POST'])
 def add_goal():
@@ -292,6 +333,7 @@ def toggle_status(goal_id):
         if goal['status'] == 'In Progress':
             goal['status'] = 'Completed'
             player_data['tickets'] += 1
+            player_data['exp'] += 10  # MMORPG 경험치 추가
             if goal.get('type') == 'recurring':
                 goal['last_completed'] = today_str
             else:
@@ -305,18 +347,6 @@ def toggle_status(goal_id):
         save_user_goals(goals)
         save_user_player_data(player_data)
     return jsonify({'success': True, 'goals': goals, 'tickets': player_data['tickets']})
-
-@app.route('/play_clicker_game', methods=['POST'])
-def play_clicker_game():
-    if 'username' not in session: return jsonify({'success': False, 'message': 'Not logged in!'})
-    player_data = load_user_player_data()
-    if player_data['tickets'] > 0:
-        player_data['tickets'] -= 1
-        player_data['score'] += 1
-        save_user_player_data(player_data)
-        return jsonify({'success': True, 'tickets': player_data['tickets'], 'score': player_data['score']})
-    else:
-        return jsonify({'success': False, 'message': 'Not enough tickets!'})
 
 @app.route('/guess', methods=['POST'])
 def guess():
@@ -391,7 +421,7 @@ def equip_badge(item_id):
 @app.route('/reset_progress', methods=['POST'])
 def reset_progress():
     if 'username' not in session: return redirect(url_for('login'))
-    default_player_data = {'tickets': 0, 'score': 0, 'items': [], 'equipped_badge': None, 'last_login_date': None}
+    default_player_data = {'tickets': 0, 'score': 0, 'items': [], 'equipped_badge': None, 'last_login_date': None, 'level': 1, 'exp': 0, 'hp': 100}
     save_user_player_data(default_player_data)
     flash('Your game progress has been reset!', 'success')
     return redirect(url_for('settings'))
@@ -415,6 +445,179 @@ def change_password():
     flash('Password changed successfully!', 'success')
     return redirect(url_for('settings'))
 
+# --- WebSocket 이벤트 핸들러들 ---
+@socketio.on('connect')
+def on_connect():
+    if 'username' in session:
+        player_data = load_user_player_data()
+        session_id = request.sid
+        
+        # 게임 월드에 플레이어 추가
+        game_world['players'][session_id] = {
+            'username': session['username'],
+            'x': random.randint(100, 700),
+            'y': random.randint(100, 500),
+            'level': player_data.get('level', 1),
+            'exp': player_data.get('exp', 0),
+            'hp': player_data.get('hp', 100),
+            'last_seen': date.today().isoformat()
+        }
+        
+        join_room('game_world')
+        
+        # 현재 게임 상태를 새 플레이어에게 전송
+        emit('game_state', {
+            'players': game_world['players'],
+            'monsters': game_world['monsters'],
+            'items': game_world['items']
+        })
+        
+        # 다른 플레이어들에게 새 플레이어 알림
+        emit('player_joined', {
+            'session_id': session_id,
+            'player': game_world['players'][session_id]
+        }, room='game_world', include_self=False)
+
+@socketio.on('disconnect')
+def on_disconnect():
+    session_id = request.sid
+    if session_id in game_world['players']:
+        # 다른 플레이어들에게 플레이어 떠남 알림
+        emit('player_left', {'session_id': session_id}, room='game_world')
+        
+        # 게임 월드에서 플레이어 제거
+        del game_world['players'][session_id]
+        leave_room('game_world')
+
+@socketio.on('player_move')
+def on_player_move(data):
+    session_id = request.sid
+    if session_id in game_world['players']:
+        # 플레이어 위치 업데이트
+        game_world['players'][session_id]['x'] = data['x']
+        game_world['players'][session_id]['y'] = data['y']
+        
+        # 다른 플레이어들에게 위치 업데이트 전송
+        emit('player_moved', {
+            'session_id': session_id,
+            'x': data['x'],
+            'y': data['y']
+        }, room='game_world', include_self=False)
+
+@socketio.on('attack_monster')
+def on_attack_monster(data):
+    monster_id = data['monster_id']
+    session_id = request.sid
+    
+    if monster_id in game_world['monsters'] and session_id in game_world['players']:
+        monster = game_world['monsters'][monster_id]
+        player = game_world['players'][session_id]
+        
+        # 몬스터 데미지
+        damage = random.randint(5, 15)
+        monster['hp'] -= damage
+        
+        if monster['hp'] <= 0:
+            # 몬스터 처치 - 경험치와 점수 획득
+            exp_gained = random.randint(15, 25)
+            score_gained = random.randint(3, 8)
+            
+            player['exp'] += exp_gained
+            
+            # 레벨업 체크
+            if player['exp'] >= player['level'] * 100:
+                player['level'] += 1
+                player['exp'] = 0
+                player['hp'] = 100  # 레벨업시 HP 회복
+                
+                emit('level_up', {
+                    'new_level': player['level']
+                }, room=session_id)
+            
+            # 플레이어 데이터 저장
+            if 'username' in session:
+                player_data = load_user_player_data()
+                player_data['level'] = player['level']
+                player_data['exp'] = player['exp']
+                player_data['hp'] = player['hp']
+                player_data['score'] += score_gained
+                save_user_player_data(player_data)
+            
+            # 몬스터 제거
+            del game_world['monsters'][monster_id]
+            
+            # 새 몬스터 생성
+            spawn_monsters()
+            
+            # 모든 플레이어에게 업데이트 전송
+            emit('monster_killed', {
+                'monster_id': monster_id,
+                'killer': player['username'],
+                'exp_gained': exp_gained,
+                'score_gained': score_gained
+            }, room='game_world')
+            
+        else:
+            # 몬스터가 살아있음 - 데미지만 전송
+            emit('monster_damaged', {
+                'monster_id': monster_id,
+                'damage': damage,
+                'hp': monster['hp']
+            }, room='game_world')
+
+@socketio.on('collect_item')
+def on_collect_item(data):
+    item_id = data['item_id']
+    session_id = request.sid
+    
+    if item_id in game_world['items'] and session_id in game_world['players']:
+        item = game_world['items'][item_id]
+        player = game_world['players'][session_id]
+        
+        # 아이템 효과 적용
+        if item['type'] == '💎':
+            score_bonus = 20
+        elif item['type'] == '⚔️':
+            score_bonus = 15
+        elif item['type'] == '🛡️':
+            player['hp'] = min(100, player['hp'] + 25)  # HP 회복
+            score_bonus = 10
+        elif item['type'] == '💰':
+            score_bonus = 25
+        
+        # 플레이어 데이터 업데이트
+        if 'username' in session:
+            player_data = load_user_player_data()
+            player_data['score'] += score_bonus
+            if item['type'] == '🛡️':
+                player_data['hp'] = player['hp']
+            save_user_player_data(player_data)
+        
+        # 아이템 제거
+        del game_world['items'][item_id]
+        
+        # 새 아이템 생성
+        spawn_items()
+        
+        # 모든 플레이어에게 업데이트 전송
+        emit('item_collected', {
+            'item_id': item_id,
+            'collector': player['username'],
+            'item_type': item['type'],
+            'score_bonus': score_bonus
+        }, room='game_world')
+
+@socketio.on('chat_message')
+def on_chat_message(data):
+    session_id = request.sid
+    if session_id in game_world['players']:
+        player = game_world['players'][session_id]
+        
+        # 채팅 메시지를 모든 플레이어에게 전송
+        emit('chat_message', {
+            'username': player['username'],
+            'message': data['message']
+        }, room='game_world')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)

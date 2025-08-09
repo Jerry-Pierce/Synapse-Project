@@ -1,0 +1,478 @@
+<!-- templates/mmorpg_game.html -->
+{% extends "layout.html" %}
+{% block title %}{{ t.mmorpg_game }}{% endblock %}
+{% block content %}
+    <div class="mmorpg-container">
+        <h1>{{ t.mmorpg_game }}</h1>
+        
+        <!-- 게임 UI -->
+        <div class="game-ui">
+            <div class="player-info">
+                <div class="stat">{{ t.level }}: <span id="player-level">{{ player_data.level }}</span></div>
+                <div class="stat">{{ t.exp }}: <span id="player-exp">{{ player_data.exp }}</span> / <span id="exp-needed">{{ player_data.level * 100 }}</span></div>
+                <div class="stat">{{ t.hp }}: <span id="player-hp">{{ player_data.hp }}</span> / 100</div>
+                <div class="stat">{{ t.score }}: <span id="player-score">{{ player_data.score }}</span></div>
+                <div class="stat">{{ t.tickets }}: <span id="player-tickets">{{ player_data.tickets }}</span> 🎟️</div>
+            </div>
+            
+            <div class="game-controls">
+                <button id="enter-dungeon" class="dungeon-btn">{{ t.enter_dungeon }} (3 🎟️)</button>
+                <div class="movement-hint">{{ t.movement_hint }}</div>
+            </div>
+        </div>
+
+        <!-- 게임 캔버스 -->
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <!-- 채팅 시스템 -->
+        <div class="chat-system">
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="chat-input-container">
+                <input type="text" id="chat-input" placeholder="{{ t.chat_placeholder }}" maxlength="100">
+                <button id="send-chat">{{ t.send }}</button>
+            </div>
+        </div>
+
+        <!-- 게임 로그 -->
+        <div id="game-log" class="game-log"></div>
+
+        <div class="nav-links">
+            <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.back_to_game_room }}</a>
+        </div>
+    </div>
+
+    <!-- 레벨업 모달 -->
+    <div id="levelup-modal" class="modal-overlay hidden">
+        <div class="modal-content levelup-content">
+            <h2>🎉 {{ t.level_up }}! 🎉</h2>
+            <p>{{ t.level_up_message }} <span id="new-level-display"></span>!</p>
+            <button id="close-levelup" class="play-btn">{{ t.continue }}</button>
+        </div>
+    </div>
+
+    <!-- 던전 입장 모달 -->
+    <div id="dungeon-modal" class="modal-overlay hidden">
+        <div class="modal-content dungeon-content">
+            <h2>🏰 {{ t.entering_dungeon }}</h2>
+            <p>{{ t.dungeon_desc }}</p>
+            <div class="dungeon-reward">{{ t.dungeon_reward }}</div>
+            <div class="spinner"></div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+<script>
+    // 게임 변수들
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const socket = io();
+    
+    const playerInfoElements = {
+        level: document.getElementById('player-level'),
+        exp: document.getElementById('player-exp'),
+        expNeeded: document.getElementById('exp-needed'),
+        hp: document.getElementById('player-hp'),
+        score: document.getElementById('player-score'),
+        tickets: document.getElementById('player-tickets')
+    };
+
+    let gameState = {
+        players: {},
+        monsters: {},
+        items: {},
+        myPlayer: null,
+        mySessionId: null
+    };
+
+    let keys = {
+        w: false, s: false, a: false, d: false,
+        ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false
+    };
+
+    // 번역 데이터
+    const translations = {{ t | tojson | safe }};
+
+    // 게임 초기화
+    function initGame() {
+        canvas.style.border = '2px solid #5c67f2';
+        canvas.style.borderRadius = '8px';
+        canvas.style.backgroundColor = '#2d3748';
+        
+        // 키보드 이벤트 리스너
+        document.addEventListener('keydown', (e) => {
+            if (e.code in keys) {
+                keys[e.code] = true;
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.code in keys) {
+                keys[e.code] = false;
+                e.preventDefault();
+            }
+        });
+
+        // 마우스 클릭 이벤트 (몬스터 공격, 아이템 수집)
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            
+            // 몬스터 클릭 체크
+            for (const [monsterId, monster] of Object.entries(gameState.monsters)) {
+                if (isPointInCircle(clickX, clickY, monster.x, monster.y, 25)) {
+                    socket.emit('attack_monster', { monster_id: monsterId });
+                    addGameLog(`🗡️ ${monster.type} 공격!`, 'attack');
+                    return;
+                }
+            }
+            
+            // 아이템 클릭 체크
+            for (const [itemId, item] of Object.entries(gameState.items)) {
+                if (isPointInCircle(clickX, clickY, item.x, item.y, 20)) {
+                    socket.emit('collect_item', { item_id: itemId });
+                    return;
+                }
+            }
+        });
+
+        // 게임 루프 시작
+        gameLoop();
+    }
+
+    // 게임 루프
+    function gameLoop() {
+        update();
+        render();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // 게임 업데이트
+    function update() {
+        if (!gameState.myPlayer) return;
+
+        let moved = false;
+        const moveSpeed = 3;
+        let newX = gameState.myPlayer.x;
+        let newY = gameState.myPlayer.y;
+
+        // 이동 처리
+        if (keys['KeyW'] || keys['ArrowUp']) {
+            newY = Math.max(25, newY - moveSpeed);
+            moved = true;
+        }
+        if (keys['KeyS'] || keys['ArrowDown']) {
+            newY = Math.min(canvas.height - 25, newY + moveSpeed);
+            moved = true;
+        }
+        if (keys['KeyA'] || keys['ArrowLeft']) {
+            newX = Math.max(25, newX - moveSpeed);
+            moved = true;
+        }
+        if (keys['KeyD'] || keys['ArrowRight']) {
+            newX = Math.min(canvas.width - 25, newX + moveSpeed);
+            moved = true;
+        }
+
+        if (moved) {
+            gameState.myPlayer.x = newX;
+            gameState.myPlayer.y = newY;
+            socket.emit('player_move', { x: newX, y: newY });
+        }
+    }
+
+    // 렌더링
+    function render() {
+        // 화면 클리어
+        ctx.fillStyle = '#2d3748';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 격자 그리기
+        drawGrid();
+
+        // 아이템 렌더링
+        for (const [itemId, item] of Object.entries(gameState.items)) {
+            drawItem(item);
+        }
+
+        // 몬스터 렌더링
+        for (const [monsterId, monster] of Object.entries(gameState.monsters)) {
+            drawMonster(monster);
+        }
+
+        // 플레이어들 렌더링
+        for (const [sessionId, player] of Object.entries(gameState.players)) {
+            drawPlayer(player, sessionId === gameState.mySessionId);
+        }
+    }
+
+    // 격자 그리기
+    function drawGrid() {
+        ctx.strokeStyle = '#4a5568';
+        ctx.lineWidth = 0.5;
+        
+        for (let x = 0; x < canvas.width; x += 50) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+        
+        for (let y = 0; y < canvas.height; y += 50) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    }
+
+    // 플레이어 그리기
+    function drawPlayer(player, isMe) {
+        ctx.fillStyle = isMe ? '#4CAF50' : '#2196F3';
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, 20, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // 플레이어 이름
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(player.username, player.x, player.y - 25);
+        
+        // 레벨 표시
+        ctx.fillText(`Lv.${player.level}`, player.x, player.y + 35);
+        
+        // HP 바
+        const barWidth = 30;
+        const barHeight = 4;
+        const hpPercent = player.hp / 100;
+        
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(player.x - barWidth/2, player.y + 25, barWidth, barHeight);
+        ctx.fillStyle = '#00FF00';
+        ctx.fillRect(player.x - barWidth/2, player.y + 25, barWidth * hpPercent, barHeight);
+    }
+
+    // 몬스터 그리기
+    function drawMonster(monster) {
+        // 몬스터 본체
+        ctx.font = '30px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(monster.type, monster.x, monster.y + 10);
+
+        // HP 바
+        const barWidth = 40;
+        const barHeight = 6;
+        const hpPercent = monster.hp / monster.max_hp;
+        
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(monster.x - barWidth/2, monster.y - 25, barWidth, barHeight);
+        ctx.fillStyle = '#00FF00';
+        ctx.fillRect(monster.x - barWidth/2, monster.y - 25, barWidth * hpPercent, barHeight);
+        
+        // HP 텍스트
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '10px Arial';
+        ctx.fillText(`${monster.hp}/${monster.max_hp}`, monster.x, monster.y - 30);
+    }
+
+    // 아이템 그리기
+    function drawItem(item) {
+        ctx.font = '25px Arial';
+        ctx.textAlign = 'center';
+        
+        // 반짝이는 효과
+        const time = Date.now() / 1000;
+        const alpha = 0.7 + 0.3 * Math.sin(time * 3);
+        ctx.globalAlpha = alpha;
+        
+        ctx.fillText(item.type, item.x, item.y + 8);
+        
+        ctx.globalAlpha = 1;
+    }
+
+    // 점과 원의 충돌 체크
+    function isPointInCircle(px, py, cx, cy, radius) {
+        const dx = px - cx;
+        const dy = py - cy;
+        return (dx * dx + dy * dy) <= (radius * radius);
+    }
+
+    // 게임 로그 추가
+    function addGameLog(message, type = 'info') {
+        const gameLog = document.getElementById('game-log');
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${type}`;
+        logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        
+        gameLog.appendChild(logEntry);
+        gameLog.scrollTop = gameLog.scrollHeight;
+        
+        // 최대 50개 로그만 유지
+        while (gameLog.children.length > 50) {
+            gameLog.removeChild(gameLog.firstChild);
+        }
+    }
+
+    // 채팅 메시지 추가
+    function addChatMessage(username, message) {
+        const chatMessages = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'chat-message';
+        messageDiv.innerHTML = `<strong>${username}:</strong> ${message}`;
+        
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // 최대 100개 메시지만 유지
+        while (chatMessages.children.length > 100) {
+            chatMessages.removeChild(chatMessages.firstChild);
+        }
+    }
+
+    // 플레이어 정보 업데이트
+    function updatePlayerInfo(data) {
+        if (data.level) playerInfoElements.level.textContent = data.level;
+        if (data.exp !== undefined) {
+            playerInfoElements.exp.textContent = data.exp;
+            playerInfoElements.expNeeded.textContent = data.level * 100;
+        }
+        if (data.hp) playerInfoElements.hp.textContent = data.hp;
+        if (data.score) playerInfoElements.score.textContent = data.score;
+        if (data.tickets) playerInfoElements.tickets.textContent = data.tickets;
+    }
+
+    // Socket.IO 이벤트 리스너들
+    socket.on('connect', () => {
+        addGameLog('🌐 게임 서버에 연결되었습니다!', 'success');
+        gameState.mySessionId = socket.id;
+    });
+
+    socket.on('game_state', (data) => {
+        gameState.players = data.players;
+        gameState.monsters = data.monsters;
+        gameState.items = data.items;
+        
+        if (gameState.mySessionId && data.players[gameState.mySessionId]) {
+            gameState.myPlayer = data.players[gameState.mySessionId];
+        }
+        
+        addGameLog(`🎮 게임 상태 로드됨 - 플레이어: ${Object.keys(data.players).length}, 몬스터: ${Object.keys(data.monsters).length}`, 'info');
+    });
+
+    socket.on('player_joined', (data) => {
+        gameState.players[data.session_id] = data.player;
+        addGameLog(`👋 ${data.player.username}님이 게임에 참여했습니다!`, 'join');
+    });
+
+    socket.on('player_left', (data) => {
+        if (gameState.players[data.session_id]) {
+            addGameLog(`👋 ${gameState.players[data.session_id].username}님이 게임을 떠났습니다.`, 'leave');
+            delete gameState.players[data.session_id];
+        }
+    });
+
+    socket.on('player_moved', (data) => {
+        if (gameState.players[data.session_id]) {
+            gameState.players[data.session_id].x = data.x;
+            gameState.players[data.session_id].y = data.y;
+        }
+    });
+
+    socket.on('monster_damaged', (data) => {
+        if (gameState.monsters[data.monster_id]) {
+            gameState.monsters[data.monster_id].hp = data.hp;
+            addGameLog(`💥 몬스터가 ${data.damage} 데미지를 받았습니다!`, 'combat');
+        }
+    });
+
+    socket.on('monster_killed', (data) => {
+        delete gameState.monsters[data.monster_id];
+        addGameLog(`⚔️ ${data.killer}님이 몬스터를 처치했습니다! (+${data.exp_gained} EXP, +${data.score_gained} 점수)`, 'success');
+        
+        if (data.killer === "{{ session.username }}") {
+            // 내가 처치한 경우 UI 업데이트
+            const currentScore = parseInt(playerInfoElements.score.textContent);
+            playerInfoElements.score.textContent = currentScore + data.score_gained;
+        }
+    });
+
+    socket.on('item_collected', (data) => {
+        delete gameState.items[data.item_id];
+        addGameLog(`✨ ${data.collector}님이 ${data.item_type} 아이템을 획득했습니다! (+${data.score_bonus} 점수)`, 'success');
+        
+        if (data.collector === "{{ session.username }}") {
+            // 내가 획득한 경우 UI 업데이트
+            const currentScore = parseInt(playerInfoElements.score.textContent);
+            playerInfoElements.score.textContent = currentScore + data.score_bonus;
+        }
+    });
+
+    socket.on('level_up', (data) => {
+        const modal = document.getElementById('levelup-modal');
+        const newLevelDisplay = document.getElementById('new-level-display');
+        
+        newLevelDisplay.textContent = data.new_level;
+        modal.classList.remove('hidden');
+        
+        updatePlayerInfo({
+            level: data.new_level,
+            exp: 0,
+            hp: 100
+        });
+        
+        addGameLog(`🎉 레벨업! 레벨 ${data.new_level}이 되었습니다!`, 'success');
+    });
+
+    socket.on('chat_message', (data) => {
+        addChatMessage(data.username, data.message);
+    });
+
+    socket.on('disconnect', () => {
+        addGameLog('❌ 서버와의 연결이 끊어졌습니다.', 'error');
+    });
+
+    // UI 이벤트 리스너들
+    document.getElementById('close-levelup').addEventListener('click', () => {
+        document.getElementById('levelup-modal').classList.add('hidden');
+    });
+
+    document.getElementById('send-chat').addEventListener('click', () => {
+        const chatInput = document.getElementById('chat-input');
+        const message = chatInput.value.trim();
+        
+        if (message) {
+            socket.emit('chat_message', { message: message });
+            chatInput.value = '';
+        }
+    });
+
+    document.getElementById('chat-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('send-chat').click();
+        }
+    });
+
+    document.getElementById('enter-dungeon').addEventListener('click', () => {
+        const tickets = parseInt(playerInfoElements.tickets.textContent);
+        if (tickets >= 3) {
+            // 던전 입장 로직 (향후 구현)
+            const modal = document.getElementById('dungeon-modal');
+            modal.classList.remove('hidden');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                addGameLog('🏰 던전 기능은 곧 출시됩니다!', 'info');
+            }, 3000);
+        } else {
+            addGameLog('❌ 던전 입장에는 티켓 3개가 필요합니다!', 'error');
+        }
+    });
+
+    // 게임 시작
+    window.addEventListener('load', initGame);
+</script>
+{% endblock %}
