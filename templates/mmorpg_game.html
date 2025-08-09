@@ -2,63 +2,64 @@
 {% extends "layout.html" %}
 {% block title %}{{ t.mmorpg_game }}{% endblock %}
 {% block content %}
-    <div class="mmorpg-container">
-        <h1>{{ t.mmorpg_game }}</h1>
-        
-        <!-- 게임 UI -->
-        <div class="game-ui">
-            <div class="player-info">
-                <div class="stat">{{ t.level }}: <span id="player-level">{{ player_data.level }}</span></div>
-                <div class="stat">{{ t.exp }}: <span id="player-exp">{{ player_data.exp }}</span> / <span id="exp-needed">{{ player_data.level * 100 }}</span></div>
-                <div class="stat">{{ t.hp }}: <span id="player-hp">{{ player_data.hp }}</span> / 100</div>
-                <div class="stat">{{ t.score }}: <span id="player-score">{{ player_data.score }}</span></div>
-                <div class="stat">{{ t.tickets }}: <span id="player-tickets">{{ player_data.tickets }}</span> 🎟️</div>
-            </div>
-            
-            <div class="game-controls">
-                <button id="enter-dungeon" class="dungeon-btn">{{ t.enter_dungeon }} (3 🎟️)</button>
-                <div class="movement-hint">{{ t.movement_hint }}</div>
-            </div>
+<div class="mmorpg-container">
+    <h1>{{ t.mmorpg_game }}</h1>
+
+    <!-- 게임 UI -->
+    <div class="game-ui">
+        <div class="player-info">
+            <div class="stat">{{ t.level }}: <span id="player-level">{{ player_data.level }}</span></div>
+            <div class="stat">{{ t.exp }}: <span id="player-exp">{{ player_data.exp }}</span> / <span id="exp-needed">{{
+                    player_data.level * 100 }}</span></div>
+            <div class="stat">{{ t.hp }}: <span id="player-hp">{{ player_data.hp }}</span> / 100</div>
+            <div class="stat">{{ t.score }}: <span id="player-score">{{ player_data.score }}</span></div>
+            <div class="stat">{{ t.tickets }}: <span id="player-tickets">{{ player_data.tickets }}</span> 🎟️</div>
         </div>
 
-        <!-- 게임 캔버스 -->
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
-
-        <!-- 채팅 시스템 -->
-        <div class="chat-system">
-            <div id="chat-messages" class="chat-messages"></div>
-            <div class="chat-input-container">
-                <input type="text" id="chat-input" placeholder="{{ t.chat_placeholder }}" maxlength="100">
-                <button id="send-chat">{{ t.send }}</button>
-            </div>
-        </div>
-
-        <!-- 게임 로그 -->
-        <div id="game-log" class="game-log"></div>
-
-        <div class="nav-links">
-            <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.back_to_game_room }}</a>
+        <div class="game-controls">
+            <button id="enter-dungeon" class="dungeon-btn">{{ t.enter_dungeon }} (3 🎟️)</button>
+            <div class="movement-hint">{{ t.movement_hint }}</div>
         </div>
     </div>
 
-    <!-- 레벨업 모달 -->
-    <div id="levelup-modal" class="modal-overlay hidden">
-        <div class="modal-content levelup-content">
-            <h2>🎉 {{ t.level_up }}! 🎉</h2>
-            <p>{{ t.level_up_message }} <span id="new-level-display"></span>!</p>
-            <button id="close-levelup" class="play-btn">{{ t.continue }}</button>
+    <!-- 게임 캔버스 -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- 채팅 시스템 -->
+    <div class="chat-system">
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-container">
+            <input type="text" id="chat-input" placeholder="{{ t.chat_placeholder }}" maxlength="100">
+            <button id="send-chat">{{ t.send }}</button>
         </div>
     </div>
 
-    <!-- 던전 입장 모달 -->
-    <div id="dungeon-modal" class="modal-overlay hidden">
-        <div class="modal-content dungeon-content">
-            <h2>🏰 {{ t.entering_dungeon }}</h2>
-            <p>{{ t.dungeon_desc }}</p>
-            <div class="dungeon-reward">{{ t.dungeon_reward }}</div>
-            <div class="spinner"></div>
-        </div>
+    <!-- 게임 로그 -->
+    <div id="game-log" class="game-log"></div>
+
+    <div class="nav-links">
+        <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.back_to_game_room }}</a>
     </div>
+</div>
+
+<!-- 레벨업 모달 -->
+<div id="levelup-modal" class="modal-overlay hidden">
+    <div class="modal-content levelup-content">
+        <h2>🎉 {{ t.level_up }}! 🎉</h2>
+        <p>{{ t.level_up_message }} <span id="new-level-display"></span>!</p>
+        <button id="close-levelup" class="play-btn">{{ t.continue }}</button>
+    </div>
+</div>
+
+<!-- 던전 입장 모달 -->
+<div id="dungeon-modal" class="modal-overlay hidden">
+    <div class="modal-content dungeon-content">
+        <h2>🏰 {{ t.entering_dungeon }}</h2>
+        <p>{{ t.dungeon_desc }}</p>
+        <div class="dungeon-reward">{{ t.dungeon_reward }}</div>
+        <div class="spinner"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -68,7 +69,7 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const socket = io();
-    
+
     const playerInfoElements = {
         level: document.getElementById('player-level'),
         exp: document.getElementById('player-exp'),
@@ -88,7 +89,26 @@
 
     let keys = {
         w: false, s: false, a: false, d: false,
-        ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false
+        ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+        KeyA: false, KeyS: false, KeyD: false, KeyE: false
+    };
+
+    // 액션 시스템
+    let playerActions = {
+        isDashing: false,
+        isBlocking: false,
+        isAttacking: false,
+        isParrying: false,
+        dashCooldown: 0,
+        parryCooldown: 0,
+        actionState: 'idle' // idle, dashing, blocking, attacking, parrying
+    };
+
+    let actionTimers = {
+        dash: { duration: 200, cooldown: 800 },
+        block: { duration: 0, cooldown: 0 }, // 지속형
+        attack: { duration: 300, cooldown: 500 },
+        parry: { duration: 150, cooldown: 1000 }
     };
 
     // 번역 데이터
@@ -99,19 +119,30 @@
         canvas.style.border = '2px solid #5c67f2';
         canvas.style.borderRadius = '8px';
         canvas.style.backgroundColor = '#2d3748';
-        
+
         // 키보드 이벤트 리스너
         document.addEventListener('keydown', (e) => {
             if (e.code in keys) {
                 keys[e.code] = true;
                 e.preventDefault();
+
+                // 액션 실행
+                handleActionInput(e.code);
             }
         });
-        
+
         document.addEventListener('keyup', (e) => {
             if (e.code in keys) {
                 keys[e.code] = false;
                 e.preventDefault();
+
+                // S키 뗴면 방어 해제
+                if (e.code === 'KeyS') {
+                    playerActions.isBlocking = false;
+                    if (playerActions.actionState === 'blocking') {
+                        playerActions.actionState = 'idle';
+                    }
+                }
             }
         });
 
@@ -120,7 +151,7 @@
             const rect = canvas.getBoundingClientRect();
             const clickX = e.clientX - rect.left;
             const clickY = e.clientY - rect.top;
-            
+
             // 몬스터 클릭 체크
             for (const [monsterId, monster] of Object.entries(gameState.monsters)) {
                 if (isPointInCircle(clickX, clickY, monster.x, monster.y, 25)) {
@@ -129,7 +160,7 @@
                     return;
                 }
             }
-            
+
             // 아이템 클릭 체크
             for (const [itemId, item] of Object.entries(gameState.items)) {
                 if (isPointInCircle(clickX, clickY, item.x, item.y, 20)) {
@@ -138,6 +169,186 @@
                 }
             }
         });
+
+        // 카메라 시스템
+        let camera = {
+            x: 400,
+            y: 300,
+            targetX: 400,
+            targetY: 300,
+            smoothing: 0.1
+        };
+
+        // 3/4 뷰 변환 함수
+        function worldToScreen(worldX, worldY) {
+            const isoX = (worldX - worldY) * 0.866; // 3/4 각도
+            const isoY = (worldX + worldY) * 0.5;
+
+            return {
+                x: isoX - camera.x + canvas.width / 2,
+                y: isoY - camera.y + canvas.height / 2
+            };
+        }
+
+        // 고급 입체 캐릭터 그리기
+        function drawIsometric3DCharacter(x, y, color) {
+            const time = Date.now() / 1000;
+
+            // 그림자 (타원형)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 30, 18, 8, 0, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // 다리 (입체적)
+            const legOffset = Math.sin(time * 8) * 2; // 걷기 애니메이션
+            drawLeg(x - 6, y + 15, color, legOffset);
+            drawLeg(x + 6, y + 15, color, -legOffset);
+
+            // 몸체 (원통형)
+            drawCylinder(x, y - 5, 12, 25, color);
+
+            // 팔 (입체적)
+            const armSwing = Math.sin(time * 8) * 0.3;
+            drawArm(x - 14, y - 8, color, armSwing);
+            drawArm(x + 14, y - 8, color, -armSwing);
+
+            // 머리 (구체)
+            drawSphere(x, y - 22, 10, color);
+
+            // 액션 상태 표시 (기존 코드)
+            drawActionEffects(x, y);
+        }
+
+        // 다리 그리기
+        function drawLeg(x, y, color, offset) {
+            ctx.fillStyle = darkenColor(color, 20);
+            ctx.fillRect(x - 3, y + offset, 6, 18);
+
+            // 발
+            ctx.fillStyle = darkenColor(color, 40);
+            ctx.fillRect(x - 4, y + 16 + offset, 8, 4);
+        }
+
+        // 팔 그리기  
+        function drawArm(x, y, color, swing) {
+            ctx.fillStyle = darkenColor(color, 10);
+            ctx.fillRect(x - 3, y + swing * 3, 6, 16);
+
+            // 손
+            ctx.fillStyle = lightenColor(color, 20);
+            ctx.beginPath();
+            ctx.arc(x, y + 14 + swing * 3, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        // 원통 그리기 (몸체)
+        function drawCylinder(x, y, radius, height, color) {
+            // 옆면
+            ctx.fillStyle = darkenColor(color, 15);
+            ctx.fillRect(x - radius, y - height / 2, radius * 2, height);
+
+            // 윗면 (타원)
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.ellipse(x, y - height / 2, radius, radius * 0.3, 0, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // 아랫면
+            ctx.fillStyle = darkenColor(color, 30);
+            ctx.beginPath();
+            ctx.ellipse(x, y + height / 2, radius, radius * 0.3, 0, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        // 구체 그리기 (머리)
+        function drawSphere(x, y, radius, color) {
+            // 그라디언트 효과
+            const gradient = ctx.createRadialGradient(x - 3, y - 3, 0, x, y, radius);
+            gradient.addColorStop(0, lightenColor(color, 30));
+            gradient.addColorStop(1, darkenColor(color, 20));
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // 눈
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(x - 3, y - 2, 1.5, 0, 2 * Math.PI);
+            ctx.arc(x + 3, y - 2, 1.5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        // 색상 밝게/어둡게 하는 유틸리티
+        function lightenColor(color, percent) {
+            const hex = color.replace('#', '');
+            const r = Math.min(255, parseInt(hex.substr(0, 2), 16) + percent);
+            const g = Math.min(255, parseInt(hex.substr(2, 2), 16) + percent);
+            const b = Math.min(255, parseInt(hex.substr(4, 2), 16) + percent);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function darkenColor(color, percent) {
+            const hex = color.replace('#', '');
+            const r = Math.max(0, parseInt(hex.substr(0, 2), 16) - percent);
+            const g = Math.max(0, parseInt(hex.substr(2, 2), 16) - percent);
+            const b = Math.max(0, parseInt(hex.substr(4, 2), 16) - percent);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // 액션 이펙트 분리
+        function drawActionEffects(x, y) {
+            if (playerActions.isDashing) {
+                // 대쉬 이펙트 (잔상)
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+                ctx.fillRect(x - 15, y - 25, 30, 40);
+            }
+
+            if (playerActions.isBlocking) {
+                // 방어 이펙트 (방패)
+                ctx.fillStyle = 'rgba(0, 100, 255, 0.6)';
+                drawShield(x - 20, y - 10);
+            }
+
+            if (playerActions.isAttacking) {
+                // 공격 이펙트 (검)
+                ctx.fillStyle = 'rgba(255, 50, 50, 0.8)';
+                drawSword(x + 12, y - 25);
+            }
+
+            if (playerActions.isParrying) {
+                // 패링 이펙트 (반짝임)
+                const sparkles = 8;
+                for (let i = 0; i < sparkles; i++) {
+                    const angle = (i / sparkles) * Math.PI * 2;
+                    const sparkX = x + Math.cos(angle) * 20;
+                    const sparkY = y + Math.sin(angle) * 20;
+
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.beginPath();
+                    ctx.arc(sparkX, sparkY, 2, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // 방패 그리기
+        function drawShield(x, y) {
+            ctx.fillRect(x, y, 8, 20);
+            ctx.fillStyle = 'rgba(150, 200, 255, 0.8)';
+            ctx.fillRect(x + 1, y + 1, 6, 18);
+        }
+
+        // 검 그리기
+        function drawSword(x, y) {
+            // 검날
+            ctx.fillRect(x, y, 3, 20);
+            // 검자루
+            ctx.fillStyle = 'rgba(139, 69, 19, 0.8)';
+            ctx.fillRect(x - 1, y + 18, 5, 8);
+        }
 
         // 게임 루프 시작
         gameLoop();
@@ -150,12 +361,101 @@
         requestAnimationFrame(gameLoop);
     }
 
+    // 액션 입력 처리
+    function handleActionInput(keyCode) {
+        const now = Date.now();
+
+        switch (keyCode) {
+            case 'KeyA': // 대쉬
+                if (!playerActions.isDashing && playerActions.dashCooldown < now) {
+                    executeDash();
+                }
+                break;
+            case 'KeyS': // 방어
+                playerActions.isBlocking = true;
+                playerActions.actionState = 'blocking';
+                break;
+            case 'KeyD': // 공격
+                if (!playerActions.isAttacking && playerActions.actionState === 'idle') {
+                    executeAttack();
+                }
+                break;
+            case 'KeyE': // 패링
+                if (!playerActions.isParrying && playerActions.parryCooldown < now) {
+                    executeParry();
+                }
+                break;
+        }
+    }
+
+    // 대쉬 실행
+    function executeDash() {
+        playerActions.isDashing = true;
+        playerActions.actionState = 'dashing';
+        playerActions.dashCooldown = Date.now() + actionTimers.dash.cooldown;
+
+        setTimeout(() => {
+            playerActions.isDashing = false;
+            if (playerActions.actionState === 'dashing') {
+                playerActions.actionState = 'idle';
+            }
+        }, actionTimers.dash.duration);
+
+        addGameLog('💨 대쉬!', 'action');
+    }
+
+    // 공격 실행
+    function executeAttack() {
+        playerActions.isAttacking = true;
+        playerActions.actionState = 'attacking';
+
+        setTimeout(() => {
+            playerActions.isAttacking = false;
+            playerActions.actionState = 'idle';
+        }, actionTimers.attack.duration);
+
+        addGameLog('⚔️ 공격!', 'attack');
+    }
+
+    // 패링 실행
+    function executeParry() {
+        playerActions.isParrying = true;
+        playerActions.actionState = 'parrying';
+        playerActions.parryCooldown = Date.now() + actionTimers.parry.cooldown;
+
+        setTimeout(() => {
+            playerActions.isParrying = false;
+            if (playerActions.actionState === 'parrying') {
+                playerActions.actionState = 'idle';
+            }
+        }, actionTimers.parry.duration);
+
+        addGameLog('🛡️ 패링!', 'action');
+    }
+
     // 게임 업데이트
     function update() {
         if (!gameState.myPlayer) return;
 
         let moved = false;
-        const moveSpeed = 3;
+        let moveSpeed = 3;
+        if (playerActions.isDashing) {
+            moveSpeed = 8; // 대쉬 중에는 이동 속도 증가
+        } else if (playerActions.isBlocking) {
+            moveSpeed = 1; // 방어 중에는 이동 속도 감소
+        } else if (playerActions.isAttacking || playerActions.isParrying) {
+            moveSpeed = 0.5; // 공격 또는 패링 중에는 이동 불가
+        }
+
+
+        // 카메라가 플레이어 따라가기 (부드럽게)
+        if (gameState.myPlayer) {
+            camera.targetX = gameState.myPlayer.x;
+            camera.targetY = gameState.myPlayer.y;
+
+            camera.x += (camera.targetX - camera.x) * camera.smoothing;
+            camera.y += (camera.targetY - camera.y) * camera.smoothing;
+        }
         let newX = gameState.myPlayer.x;
         let newY = gameState.myPlayer.y;
 
@@ -213,14 +513,14 @@
     function drawGrid() {
         ctx.strokeStyle = '#4a5568';
         ctx.lineWidth = 0.5;
-        
+
         for (let x = 0; x < canvas.width; x += 50) {
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, canvas.height);
             ctx.stroke();
         }
-        
+
         for (let y = 0; y < canvas.height; y += 50) {
             ctx.beginPath();
             ctx.moveTo(0, y);
@@ -229,68 +529,79 @@
         }
     }
 
-    // 플레이어 그리기
+    // 플레이어 그리기 (3/4 뷰)
     function drawPlayer(player, isMe) {
+        const screenX = worldToScreen(player.x, player.y).x;
+        const screenY = worldToScreen(player.x, player.y).y;
+
+        // 캐릭터 몸체 (입체 효과)
         ctx.fillStyle = isMe ? '#4CAF50' : '#2196F3';
-        ctx.beginPath();
-        ctx.arc(player.x, player.y, 20, 0, 2 * Math.PI);
-        ctx.fill();
+        drawIsometric3DCharacter(screenX, screenY, isMe ? '#4CAF50' : '#2196F3');
 
         // 플레이어 이름
         ctx.fillStyle = '#FFFFFF';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(player.username, player.x, player.y - 25);
-        
+        ctx.fillText(player.username, screenX, screenY - 25);
+
         // 레벨 표시
-        ctx.fillText(`Lv.${player.level}`, player.x, player.y + 35);
-        
+        ctx.fillText(`Lv.${player.level}`, screenX, screenY + 35);
+
         // HP 바
         const barWidth = 30;
         const barHeight = 4;
         const hpPercent = player.hp / 100;
-        
+
         ctx.fillStyle = '#FF0000';
-        ctx.fillRect(player.x - barWidth/2, player.y + 25, barWidth, barHeight);
+        ctx.fillRect(screenX - barWidth / 2, screenY + 25, barWidth, barHeight);
         ctx.fillStyle = '#00FF00';
-        ctx.fillRect(player.x - barWidth/2, player.y + 25, barWidth * hpPercent, barHeight);
+        ctx.fillRect(screenX - barWidth / 2, screenY + 25, barWidth * hpPercent, barHeight);
     }
 
-    // 몬스터 그리기
+    // 몬스터 그리기 (3/4 뷰)
     function drawMonster(monster) {
-        // 몬스터 본체
-        ctx.font = '30px Arial';
+        const screenPos = worldToScreen(monster.x, monster.y);
+
+        // 몬스터 그림자
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillRect(screenPos.x - 20, screenPos.y + 25, 40, 10);
+
+        // 몬스터 본체 (입체)
+        ctx.font = '35px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(monster.type, monster.x, monster.y + 10);
+        ctx.fillText(monster.type, screenPos.x, screenPos.y);
 
         // HP 바
         const barWidth = 40;
         const barHeight = 6;
         const hpPercent = monster.hp / monster.max_hp;
-        
+
         ctx.fillStyle = '#FF0000';
-        ctx.fillRect(monster.x - barWidth/2, monster.y - 25, barWidth, barHeight);
+        ctx.fillRect(screenPos.x - barWidth / 2, screenPos.y - 25, barWidth, barHeight);
         ctx.fillStyle = '#00FF00';
-        ctx.fillRect(monster.x - barWidth/2, monster.y - 25, barWidth * hpPercent, barHeight);
-        
+        ctx.fillRect(screenPos.x - barWidth / 2, screenPos.y - 25, barWidth * hpPercent, barHeight);
+
         // HP 텍스트
         ctx.fillStyle = '#FFFFFF';
         ctx.font = '10px Arial';
-        ctx.fillText(`${monster.hp}/${monster.max_hp}`, monster.x, monster.y - 30);
+        ctx.fillText(`${monster.hp}/${monster.max_hp}`, screenPos.x, screenPos.y - 30);
     }
 
-    // 아이템 그리기
+
     function drawItem(item) {
+        const screenPos = worldToScreen(item.x, item.y);
+
         ctx.font = '25px Arial';
         ctx.textAlign = 'center';
-        
+
         // 반짝이는 효과
         const time = Date.now() / 1000;
         const alpha = 0.7 + 0.3 * Math.sin(time * 3);
+        const bounce = Math.sin(time * 4) * 3; // 위아래 흔들림
+
         ctx.globalAlpha = alpha;
-        
-        ctx.fillText(item.type, item.x, item.y + 8);
-        
+        ctx.fillText(item.type, screenPos.x, screenPos.y + bounce);
+
         ctx.globalAlpha = 1;
     }
 
@@ -307,10 +618,10 @@
         const logEntry = document.createElement('div');
         logEntry.className = `log-entry log-${type}`;
         logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-        
+
         gameLog.appendChild(logEntry);
         gameLog.scrollTop = gameLog.scrollHeight;
-        
+
         // 최대 50개 로그만 유지
         while (gameLog.children.length > 50) {
             gameLog.removeChild(gameLog.firstChild);
@@ -323,10 +634,10 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = 'chat-message';
         messageDiv.innerHTML = `<strong>${username}:</strong> ${message}`;
-        
+
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         // 최대 100개 메시지만 유지
         while (chatMessages.children.length > 100) {
             chatMessages.removeChild(chatMessages.firstChild);
@@ -355,11 +666,11 @@
         gameState.players = data.players;
         gameState.monsters = data.monsters;
         gameState.items = data.items;
-        
+
         if (gameState.mySessionId && data.players[gameState.mySessionId]) {
             gameState.myPlayer = data.players[gameState.mySessionId];
         }
-        
+
         addGameLog(`🎮 게임 상태 로드됨 - 플레이어: ${Object.keys(data.players).length}, 몬스터: ${Object.keys(data.monsters).length}`, 'info');
     });
 
@@ -392,7 +703,7 @@
     socket.on('monster_killed', (data) => {
         delete gameState.monsters[data.monster_id];
         addGameLog(`⚔️ ${data.killer}님이 몬스터를 처치했습니다! (+${data.exp_gained} EXP, +${data.score_gained} 점수)`, 'success');
-        
+
         if (data.killer === "{{ session.username }}") {
             // 내가 처치한 경우 UI 업데이트
             const currentScore = parseInt(playerInfoElements.score.textContent);
@@ -403,7 +714,7 @@
     socket.on('item_collected', (data) => {
         delete gameState.items[data.item_id];
         addGameLog(`✨ ${data.collector}님이 ${data.item_type} 아이템을 획득했습니다! (+${data.score_bonus} 점수)`, 'success');
-        
+
         if (data.collector === "{{ session.username }}") {
             // 내가 획득한 경우 UI 업데이트
             const currentScore = parseInt(playerInfoElements.score.textContent);
@@ -414,16 +725,16 @@
     socket.on('level_up', (data) => {
         const modal = document.getElementById('levelup-modal');
         const newLevelDisplay = document.getElementById('new-level-display');
-        
+
         newLevelDisplay.textContent = data.new_level;
         modal.classList.remove('hidden');
-        
+
         updatePlayerInfo({
             level: data.new_level,
             exp: 0,
             hp: 100
         });
-        
+
         addGameLog(`🎉 레벨업! 레벨 ${data.new_level}이 되었습니다!`, 'success');
     });
 
@@ -443,7 +754,7 @@
     document.getElementById('send-chat').addEventListener('click', () => {
         const chatInput = document.getElementById('chat-input');
         const message = chatInput.value.trim();
-        
+
         if (message) {
             socket.emit('chat_message', { message: message });
             chatInput.value = '';
@@ -462,7 +773,7 @@
             // 던전 입장 로직 (향후 구현)
             const modal = document.getElementById('dungeon-modal');
             modal.classList.remove('hidden');
-            
+
             setTimeout(() => {
                 modal.classList.add('hidden');
                 addGameLog('🏰 던전 기능은 곧 출시됩니다!', 'info');
