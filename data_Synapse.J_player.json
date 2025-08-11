@@ -1,13 +1,15 @@
 {
-    "tickets": 23,
-    "score": 35,
+    "tickets": 36,
+    "score": 203,
     "items": [
-        "item003"
+        "item003",
+        "item001",
+        "item002"
     ],
-    "equipped_badge": "item003",
-    "last_login_date": "2025-08-09",
+    "equipped_badge": "item001",
+    "last_login_date": "2025-08-11",
     "force_password_reset": true,
-    "level": 2,
-    "exp": 20,
+    "level": 4,
+    "exp": 70,
     "hp": 100
 }

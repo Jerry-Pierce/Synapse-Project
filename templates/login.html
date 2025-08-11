@@ -2,11 +2,20 @@
 {% extends "layout.html" %}
 {% block title %}{{ t.login }}{% endblock %}
 {% block content %}
-    <div class="auth-container">
-        <h2>{{ t.login_to_synapse }}</h2>
+    <div class="auth-container glass-card">
+        <div class="auth-header">
+            <h2>{{ t.login_to_synapse }}</h2>
+            <p class="auth-subtitle">{{ t.welcome_back }}</p>
+        </div>
         <form action="{{ url_for('login') }}" method="POST" class="auth-form">
-            <input type="text" name="username" placeholder="{{ t.username }}" required>
-            <input type="password" name="password" placeholder="{{ t.password }}" required>
+            <div class="form-group">
+                <i class="ri-user-line"></i>
+                <input type="text" name="username" class="glass-input" placeholder="{{ t.username }}" required>
+            </div>
+            <div class="form-group">
+                <i class="ri-lock-line"></i>
+                <input type="password" name="password" class="glass-input" placeholder="{{ t.password }}" required>
+            </div>
             <div class="auth-options">
                 <div class="checkbox-wrapper auth-checkbox">
                     <input type="checkbox" id="remember" name="remember" checked>
@@ -14,8 +23,13 @@
                 </div>
                 <a href="{{ url_for('forgot_password') }}" class="forgot-link">{{ t.forgot_password }}</a>
             </div>
-            <button type="submit">{{ t.login }}</button>
+            <button type="submit" class="glass-button auth-submit">
+                <span>{{ t.login }}</span>
+                <i class="ri-arrow-right-line"></i>
+            </button>
         </form>
-        <p>{{ t.dont_have_account }} <a href="{{ url_for('register') }}">{{ t.register }}</a></p>
+        <div class="auth-footer">
+            <p>{{ t.dont_have_account }} <a href="{{ url_for('register') }}" class="auth-link">{{ t.register }}</a></p>
+        </div>
     </div>
 {% endblock %}

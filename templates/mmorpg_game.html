@@ -18,7 +18,11 @@
 
         <div class="game-controls">
             <button id="enter-dungeon" class="dungeon-btn">{{ t.enter_dungeon }} (3 🎟️)</button>
-            <div class="movement-hint">{{ t.movement_hint }}</div>
+            <div class="duel-controls">
+                <input type="text" id="duel-target" placeholder="플레이어 이름" maxlength="20">
+                <button id="request-duel" class="duel-btn">듀얼 신청</button>
+            </div>
+            <div class="movement-hint">방향키:이동, A:대쉬, S:방어, D:공격, E:패링, Z:파밍</div>
         </div>
     </div>
 
@@ -60,6 +64,27 @@
         <div class="spinner"></div>
     </div>
 </div>
+
+<!-- 듀얼 요청 모달 -->
+<div id="duel-request-modal" class="modal-overlay hidden">
+    <div class="modal-content duel-content">
+        <h2>⚔️ 듀얼 신청</h2>
+        <p id="duel-request-message"></p>
+        <div class="duel-buttons">
+            <button id="accept-duel" class="accept-btn">수락</button>
+            <button id="decline-duel" class="decline-btn">거절</button>
+        </div>
+    </div>
+</div>
+
+<!-- 듀얼 알림 모달 -->
+<div id="duel-notification-modal" class="modal-overlay hidden">
+    <div class="modal-content duel-notification-content">
+        <h2 id="duel-notification-title">⚔️ 듀얼</h2>
+        <p id="duel-notification-message"></p>
+        <button id="close-duel-notification" class="play-btn">확인</button>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -83,14 +108,18 @@
         players: {},
         monsters: {},
         items: {},
+        duels: {},
+        duel_requests: {},
         myPlayer: null,
-        mySessionId: null
+        mySessionId: null,
+        currentDuelRequestId: null,
+        playerDirection: 'down' // 플레이어가 보고 있는 방향 (up, down, left, right)
     };
 
     let keys = {
         w: false, s: false, a: false, d: false,
         ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
-        KeyA: false, KeyS: false, KeyD: false, KeyE: false
+        KeyA: false, KeyS: false, KeyD: false, KeyE: false, KeyZ: false, KeyQ: false
     };
 
     // 액션 시스템
@@ -99,8 +128,14 @@
         isBlocking: false,
         isAttacking: false,
         isParrying: false,
+        isWeaponDrawn: true, // 무기가 꺼내져 있는지
+        isDrawingWeapon: false, // 무기를 꺼내는 중인지
+        isSheathingWeapon: false, // 무기를 집어넣는 중인지
+        attackSwingAngle: 0, // 검 휘두르기 각도
+        weaponDrawProgress: 0, // 무기 꺼내기/집어넣기 진행도 (0-1)
         dashCooldown: 0,
         parryCooldown: 0,
+        weaponToggleCooldown: 0,
         actionState: 'idle' // idle, dashing, blocking, attacking, parrying
     };
 
@@ -111,14 +146,816 @@
         parry: { duration: 150, cooldown: 1000 }
     };
 
+    // 카메라 시스템 (전역으로 이동)
+    let camera = {
+        x: 0,
+        y: 0,
+        targetX: 0,
+        targetY: 0,
+        smoothing: 0.1
+    };
+
+    // 데미지 숫자 시스템
+    let damageNumbers = [];
+    // 화면 효과(카메라 셰이크/히트스톱)
+    let effects = {
+        cameraShake: { amp: 0, duration: 0, start: 0, decay: 0.85 },
+        hitstopUntil: 0
+    };
+    // 손 기준점(무기 그리기용) — 초기값은 플레이어 중심
+    let handAnchor = { x: canvas.width/2, y: canvas.height/2, angle: 0, dir: 'down' };
+
+    // 숲 배경 레이어 데이터
+    const forest = {
+        far: [],
+        mid: [],
+        leaves: []
+    };
+
     // 번역 데이터
     const translations = {{ t | tojson | safe }};
+
+    // 전역 함수들
+    function worldToScreen(worldX, worldY) {
+        return {
+            x: worldX - camera.x + canvas.width / 2,
+            y: worldY - camera.y + canvas.height / 2
+        };
+    }
+
+    function drawIsometric3DCharacter(x, y, color, isMoving = false, direction = 'down') {
+        // 애니메이션 변수
+        const time = Date.now() / 1000;
+        const walkCycle = Math.sin(time * 8) * (isMoving ? 1 : 0);
+        
+        // 공통 그림자
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.save();
+        ctx.scale(1, 0.3);
+        ctx.beginPath();
+        ctx.arc(x, (y + 35) / 0.3, 20, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+        
+        // 방향에 따라 다른 캐릭터 그리기
+        if (direction === 'down') {
+            drawCharacterFront(x, y, color, walkCycle);
+        } else if (direction === 'up') {
+            drawCharacterBack(x, y, color, walkCycle);
+        } else if (direction === 'left') {
+            drawCharacterLeft(x, y, color, walkCycle);
+        } else if (direction === 'right') {
+            drawCharacterRight(x, y, color, walkCycle);
+        }
+        
+        // 기본 무기 (한손검) 표시 (방향에 따라 위치 조정)
+        drawWeapon(x, y, direction);
+
+        // 액션 상태 표시
+        drawActionEffects(x, y);
+    }
+    
+    // 정면 (아래쪽 보기) - 3D 졸라맨 스타일
+    function drawCharacterFront(x, y, color, walkCycle) {
+        const time = Date.now() / 1000;
+        
+        // 자연스러운 걷기 애니메이션 계산
+        const leftLegAngle = Math.sin(time * 6) * 25; // 왼쪽 다리
+        const rightLegAngle = Math.sin(time * 6 + Math.PI) * 25; // 오른쪽 다리 (반대)
+        const leftArmAngle = Math.sin(time * 6 + Math.PI) * 15; // 왼팔 (다리와 반대)
+        const rightArmAngle = Math.sin(time * 6) * 15; // 오른팔
+        const bodyBob = Math.abs(Math.sin(time * 12)) * 2; // 몸통 상하 움직임
+        
+        // 움직임 적용 (걸을 때만)
+        const moveMultiplier = walkCycle !== 0 ? 1 : 0;
+        
+        ctx.save();
+        
+        // === 다리 (타원형 원통) ===
+        // 왼쪽 다리
+        ctx.save();
+        ctx.translate(x - 6, y + 15);
+        ctx.rotate((leftLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 6, 20, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // 오른쪽 다리
+        ctx.save();
+        ctx.translate(x + 6, y + 15);
+        ctx.rotate((rightLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 6, 20, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // === 몸통 (3D 타원형) ===
+        drawTorso3D(x, y - 2 - bodyBob * moveMultiplier, color);
+        
+        // === 팔 (타원형 원통) ===
+        // 왼쪽 팔
+        ctx.save();
+        ctx.translate(x - 15, y - 8);
+        ctx.rotate((leftArmAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 5, 18, color, 'vertical');
+        ctx.restore();
+        
+        // 오른쪽 팔
+        const rightRad = (rightArmAngle * moveMultiplier * Math.PI) / 180;
+        ctx.save();
+        ctx.translate(x + 15, y - 8);
+        ctx.rotate(rightRad);
+        drawLimb3D(0, 0, 5, 18, color, 'vertical');
+        ctx.restore();
+
+        // 손 위치 추정(정면 보기, 오른손 기준)
+        handAnchor.x = x + 15 + Math.sin(rightRad) * 18;
+        handAnchor.y = y - 8 + Math.cos(rightRad) * 18;
+        handAnchor.angle = rightRad;
+        handAnchor.dir = 'down';
+        
+        // === 머리 (3D 타원형) ===
+        drawHead3D(x, y - 22 - bodyBob * moveMultiplier, getLighterColor(color));
+        
+        // === 얼굴 ===
+        const headY = y - 22 - bodyBob * moveMultiplier;
+        drawFace(x, headY, 'front');
+        
+        ctx.restore();
+    }
+    
+    // 부드러운 몸통 그리기
+    function drawTorso3D(x, y, color) {
+        // 몸통 메인 (타원형으로 부드럽게)
+        const gradient = ctx.createRadialGradient(x - 2, y, 0, x, y, 20);
+        gradient.addColorStop(0, getLighterColor(color));
+        gradient.addColorStop(0.6, color);
+        gradient.addColorStop(1, getDarkerColor(color));
+        
+        ctx.fillStyle = gradient;
+        // 상체 (더 넓게)
+        ctx.beginPath();
+        ctx.ellipse(x, y - 10, 14, 18, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 하체 (더 좁게)
+        ctx.beginPath();
+        ctx.ellipse(x, y + 15, 10, 15, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 자연스러운 연결을 위한 중간 부분
+        ctx.beginPath();
+        ctx.ellipse(x, y + 2, 12, 16, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    
+    // 부드러운 머리 그리기
+    function drawHead3D(x, y, color) {
+        const gradient = ctx.createRadialGradient(x - 2, y, 0, x, y, 15);
+        gradient.addColorStop(0, getLighterColor(color));
+        gradient.addColorStop(0.7, color);
+        gradient.addColorStop(1, getDarkerColor(color));
+        
+        ctx.fillStyle = gradient;
+        
+        // 머리 (타원형)
+        ctx.beginPath();
+        ctx.ellipse(x, y, 10, 13, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 목 부분 (자연스러운 연결)
+        ctx.beginPath();
+        ctx.ellipse(x, y + 10, 6, 8, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    
+    // 부드러운 팔다리 그리기
+    function drawLimb3D(x, y, width, height, color, direction) {
+        if (direction === 'vertical') {
+            const gradient = ctx.createLinearGradient(x - width/2, y, x + width/2, y);
+            gradient.addColorStop(0, getDarkerColor(color));
+            gradient.addColorStop(0.3, color);
+            gradient.addColorStop(0.7, getLighterColor(color));
+            gradient.addColorStop(1, color);
+            
+            ctx.fillStyle = gradient;
+            
+            // 메인 부분
+            ctx.beginPath();
+            ctx.ellipse(x, y + height/2, width/2, height/2, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 상단 연결부
+            ctx.beginPath();
+            ctx.ellipse(x, y, width/2, width/2, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 하단 연결부
+            ctx.beginPath();
+            ctx.ellipse(x, y + height, width/2, width/2, 0, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+    
+    // 뒷면 (위쪽 보기) - 3D 졸라맨 스타일
+    function drawCharacterBack(x, y, color, walkCycle) {
+        const time = Date.now() / 1000;
+        
+        // 뒷면 걷기 애니메이션 (앞면과 동일하지만 팔 움직임 반대)
+        const leftLegAngle = Math.sin(time * 6) * 25;
+        const rightLegAngle = Math.sin(time * 6 + Math.PI) * 25;
+        const leftArmAngle = Math.sin(time * 6 + Math.PI) * 15;
+        const rightArmAngle = Math.sin(time * 6) * 15;
+        const bodyBob = Math.abs(Math.sin(time * 12)) * 2;
+        
+        const moveMultiplier = walkCycle !== 0 ? 1 : 0;
+        
+        ctx.save();
+        
+        // === 다리 (뒤에서 봤을 때) ===
+        ctx.save();
+        ctx.translate(x - 6, y + 15);
+        ctx.rotate((leftLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 6, 20, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        ctx.save();
+        ctx.translate(x + 6, y + 15);
+        ctx.rotate((rightLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 6, 20, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // === 등 (뒤에서 봤을 때) ===
+        drawBackTorso3D(x, y - 2 - bodyBob * moveMultiplier, color);
+        
+        // === 팔 (뒤에서) ===
+        ctx.save();
+        ctx.translate(x - 15, y - 8);
+        ctx.rotate((leftArmAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 5, 18, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        const backRightRad = (rightArmAngle * moveMultiplier * Math.PI) / 180;
+        ctx.save();
+        ctx.translate(x + 15, y - 8);
+        ctx.rotate(backRightRad);
+        drawLimb3D(0, 0, 5, 18, getDarkerColor(color), 'vertical');
+        ctx.restore();
+
+        // 손 위치(뒷면): 오른손 기준 업데이트
+        handAnchor.x = x + 15 + Math.sin(backRightRad) * 18;
+        handAnchor.y = y - 8 + Math.cos(backRightRad) * 18;
+        handAnchor.angle = backRightRad;
+        handAnchor.dir = 'up';
+        
+        // === 뒷머리 ===
+        drawBackHead3D(x, y - 22 - bodyBob * moveMultiplier, color);
+        
+        ctx.restore();
+    }
+    
+    // 뒷면 몸통 그리기
+    function drawBackTorso3D(x, y, color) {
+        // 등 (더 어둡게)
+        const backGradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
+        backGradient.addColorStop(0, color);
+        backGradient.addColorStop(1, getDarkerColor(color));
+        
+        ctx.fillStyle = backGradient;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 11, 15, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 어깨 라인
+        ctx.fillStyle = getEvenDarkerColor(color);
+        ctx.beginPath();
+        ctx.ellipse(x, y - 8, 12, 3, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    
+    // 뒷머리 그리기
+    function drawBackHead3D(x, y, color) {
+        // 뒷머리 (어둡게)
+        const backHeadGradient = ctx.createRadialGradient(x + 2, y - 2, 0, x, y, 12);
+        backHeadGradient.addColorStop(0, color);
+        backHeadGradient.addColorStop(1, getDarkerColor(color));
+        
+        ctx.fillStyle = backHeadGradient;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 12, 10, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 머리카락 디테일
+        ctx.fillStyle = getEvenDarkerColor(color);
+        ctx.beginPath();
+        ctx.ellipse(x, y - 6, 10, 3, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    
+    // 왼쪽 보기 - 3D 졸라맨 스타일
+    function drawCharacterLeft(x, y, color, walkCycle) {
+        const time = Date.now() / 1000;
+        
+        // 측면 걷기 애니메이션
+        const frontLegAngle = Math.sin(time * 6) * 30; // 앞다리
+        const backLegAngle = Math.sin(time * 6 + Math.PI) * 30; // 뒷다리
+        const frontArmAngle = Math.sin(time * 6 + Math.PI) * 20; // 앞팔
+        const backArmAngle = Math.sin(time * 6) * 20; // 뒷팔
+        const bodyBob = Math.abs(Math.sin(time * 12)) * 2;
+        
+        const moveMultiplier = walkCycle !== 0 ? 1 : 0;
+        
+        ctx.save();
+        
+        // === 뒷다리 (먼저 그려서 뒤에 위치) ===
+        ctx.save();
+        ctx.translate(x - 3, y + 15);
+        ctx.rotate((backLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 5, 20, getEvenDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // === 몸통 (측면) ===
+        drawSideTorso3D(x, y - 2 - bodyBob * moveMultiplier, color);
+        
+        // === 앞다리 (위에 그려서 앞에 위치) ===
+        ctx.save();
+        ctx.translate(x + 3, y + 15);
+        ctx.rotate((frontLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 5, 20, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // === 앞팔(카메라 측, 몸통에 붙어서 보이도록) ===
+        ctx.save();
+        const leftFrontRad = (frontArmAngle * moveMultiplier * Math.PI) / 180;
+        ctx.translate(x + 6, y - 6);
+        ctx.rotate(leftFrontRad);
+        drawLimb3D(0, 0, 4, 18, color, 'vertical');
+        ctx.restore();
+        
+        // 손 위치(왼쪽 보기)
+        handAnchor.x = x + 6 + Math.sin(leftFrontRad) * 18;
+        handAnchor.y = y - 6 + Math.cos(leftFrontRad) * 18;
+        handAnchor.angle = -leftFrontRad; // 팔의 회전과 반대 방향으로 무기 회전
+        handAnchor.dir = 'left';
+        
+        // === 머리 (옆모습) ===
+        drawSideHead3D(x, y - 22 - bodyBob * moveMultiplier, getLighterColor(color), 'left');
+        
+        // === 얼굴(왼쪽)
+        const headY = y - 22 - bodyBob * moveMultiplier;
+        drawFace(x, headY, 'left');
+        
+        ctx.restore();
+    }
+    
+    // 오른쪽 보기 - 3D 졸라맨 스타일
+    function drawCharacterRight(x, y, color, walkCycle) {
+        const time = Date.now() / 1000;
+        
+        // 측면 걷기 애니메이션 (오른쪽은 왼쪽과 미러)
+        const frontLegAngle = Math.sin(time * 6) * 30;
+        const backLegAngle = Math.sin(time * 6 + Math.PI) * 30;
+        const frontArmAngle = Math.sin(time * 6 + Math.PI) * 20;
+        const backArmAngle = Math.sin(time * 6) * 20;
+        const bodyBob = Math.abs(Math.sin(time * 12)) * 2;
+        
+        const moveMultiplier = walkCycle !== 0 ? 1 : 0;
+        
+        ctx.save();
+        
+        // === 뒷다리 ===
+        ctx.save();
+        ctx.translate(x + 3, y + 15);
+        ctx.rotate((backLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 5, 20, getEvenDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // === 몸통 (측면) ===
+        drawSideTorso3D(x, y - 2 - bodyBob * moveMultiplier, color);
+        
+        // === 앞다리 ===
+        ctx.save();
+        ctx.translate(x - 3, y + 15);
+        ctx.rotate((frontLegAngle * moveMultiplier * Math.PI) / 180);
+        drawLimb3D(0, 0, 5, 20, getDarkerColor(color), 'vertical');
+        ctx.restore();
+        
+        // === 앞팔(카메라 측, 몸통에 붙어서 보이도록) ===
+        ctx.save();
+        const rightFrontRad = (frontArmAngle * moveMultiplier * Math.PI) / 180;
+        ctx.translate(x - 6, y - 6);
+        ctx.rotate(rightFrontRad);
+        drawLimb3D(0, 0, 4, 18, color, 'vertical');
+        ctx.restore();
+        
+        // 손 위치(오른쪽 보기)
+        handAnchor.x = x - 6 + Math.sin(rightFrontRad) * 18;
+        handAnchor.y = y - 6 + Math.cos(rightFrontRad) * 18;
+        handAnchor.angle = -rightFrontRad; // 팔의 회전과 반대 방향으로 무기 회전
+        handAnchor.dir = 'right';
+        
+        // === 머리 (옆모습) ===
+        drawSideHead3D(x, y - 22 - bodyBob * moveMultiplier, getLighterColor(color), 'right');
+        
+        // === 얼굴(오른쪽)
+        const headY = y - 22 - bodyBob * moveMultiplier;
+        drawFace(x, headY, 'right');
+        
+        ctx.restore();
+    }
+    
+    // 측면 몸통 그리기
+    function drawSideTorso3D(x, y, color) {
+        // 측면에서 본 몸통 (좁게)
+        const sideGradient = ctx.createLinearGradient(x - 6, y, x + 6, y);
+        sideGradient.addColorStop(0, getDarkerColor(color));
+        sideGradient.addColorStop(0.5, color);
+        sideGradient.addColorStop(1, getLighterColor(color));
+        
+        ctx.fillStyle = sideGradient;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 6, 15, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 가슴 하이라이트
+        ctx.fillStyle = getEvenLighterColor(color);
+        ctx.beginPath();
+        ctx.ellipse(x + 2, y - 5, 2, 5, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    
+    // 측면 머리 그리기
+    function drawSideHead3D(x, y, color, side) {
+        // 옆에서 본 머리 (타원형)
+        const sideHeadGradient = ctx.createRadialGradient(
+            side === 'left' ? x - 2 : x + 2, y - 2, 0, x, y, 10
+        );
+        sideHeadGradient.addColorStop(0, getEvenLighterColor(color));
+        sideHeadGradient.addColorStop(0.7, color);
+        sideHeadGradient.addColorStop(1, getDarkerColor(color));
+        
+        ctx.fillStyle = sideHeadGradient;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 10, 9, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 3D 하이라이트
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.beginPath();
+        const highlightX = side === 'left' ? x - 3 : x + 3;
+        ctx.ellipse(highlightX, y - 2, 3, 4, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    
+    // 얼굴 그리기
+    function drawFace(x, y, direction) {
+        if (direction === 'front') {
+            // 정면 얼굴
+            // 눈
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.ellipse(x - 4, y - 2, 2, 3, 0, 0, 2 * Math.PI);
+            ctx.ellipse(x + 4, y - 2, 2, 3, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 눈동자
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.ellipse(x - 4, y - 2, 1, 2, 0, 0, 2 * Math.PI);
+            ctx.ellipse(x + 4, y - 2, 1, 2, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 입
+            ctx.fillStyle = '#800000';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 3, 2, 1, 0, 0, 2 * Math.PI);
+            ctx.fill();
+        } else if (direction === 'left' || direction === 'right') {
+            // 옆모습 얼굴(방향에 맞게 바깥쪽으로):
+            // 캔버스 좌표는 +x가 오른쪽. 
+            // - 왼쪽을 볼 때: 얼굴 요소를 머리의 왼쪽 가장자리(x-오프셋)
+            // - 오른쪽을 볼 때: 얼굴 요소를 머리의 오른쪽 가장자리(x+오프셋)
+            const eyeX = direction === 'left' ? x - 8 : x + 8;
+            const mouthX = direction === 'left' ? x - 9 : x + 9;
+            
+            // 눈 (하나만)
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.ellipse(eyeX, y - 2, 2, 3, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 눈동자
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.ellipse(eyeX, y - 2, 1, 2, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 입
+            ctx.fillStyle = '#800000';
+            ctx.beginPath();
+            ctx.ellipse(mouthX, y + 3, 1, 1, 0, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+    
+
+    
+    // 색상 헬퍼 함수들 (간단한 버전)
+    function getLighterColor(color) {
+        // 흰색 팔레트 우선 적용
+        if (color === '#FFFFFF') return '#F6F7F9';
+        if (color === '#4CAF50') return '#66BB6A';
+        if (color === '#2196F3') return '#42A5F5';
+        return '#F0F1F4';
+    }
+    function getDarkerColor(color) {
+        if (color === '#FFFFFF') return '#D9DEE5';
+        if (color === '#4CAF50') return '#388E3C';
+        if (color === '#2196F3') return '#1976D2';
+        return '#9AA3B2';
+    }
+    function getEvenLighterColor(color) {
+        if (color === '#FFFFFF') return '#FFFFFF';
+        if (color === '#4CAF50') return '#81C784';
+        if (color === '#2196F3') return '#64B5F6';
+        return '#FFFFFF';
+    }
+    function getEvenDarkerColor(color) {
+        if (color === '#FFFFFF') return '#B9C0CC';
+        if (color === '#4CAF50') return '#2E7D32';
+        if (color === '#2196F3') return '#1565C0';
+        return '#70798B';
+    }
+
+    function drawActionEffects(x, y) {
+        if (playerActions.isDashing) {
+            // 대쉬 이펙트 (잔상)
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+            ctx.fillRect(x - 15, y - 25, 30, 40);
+        }
+
+        if (playerActions.isBlocking) {
+            // 방어 이펙트 (방패)
+            ctx.fillStyle = 'rgba(0, 100, 255, 0.6)';
+            drawShield(x - 20, y - 10);
+        }
+
+        if (playerActions.isAttacking) {
+            // 공격 이펙트 (검)
+            ctx.fillStyle = 'rgba(255, 50, 50, 0.8)';
+            drawSword(x + 12, y - 25);
+        }
+
+        if (playerActions.isParrying) {
+            // 패링 이펙트 (반짝임)
+            const sparkles = 8;
+            for (let i = 0; i < sparkles; i++) {
+                const angle = (i / sparkles) * Math.PI * 2;
+                const sparkX = x + Math.cos(angle) * 20;
+                const sparkY = y + Math.sin(angle) * 20;
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.beginPath();
+                ctx.arc(sparkX, sparkY, 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+    }
+
+    function drawShield(x, y) {
+        ctx.fillRect(x, y, 8, 20);
+        ctx.fillStyle = 'rgba(150, 200, 255, 0.8)';
+        ctx.fillRect(x + 1, y + 1, 6, 18);
+    }
+
+    function drawSword(x, y) {
+        // 검날
+        ctx.fillRect(x, y, 3, 20);
+        // 검자루
+        ctx.fillStyle = 'rgba(139, 69, 19, 0.8)';
+        ctx.fillRect(x - 1, y + 18, 5, 8);
+    }
+
+    // 기본 무기 (한손검) 그리기 - 플레이어와 일체화
+    function drawWeapon(x, y, direction = 'down') {
+        // 무기가 집어넣어져 있으면 등에 고정
+        if (!playerActions.isWeaponDrawn && !playerActions.isDrawingWeapon && !playerActions.isSheathingWeapon) {
+            drawSheathedWeapon(x, y, direction);
+            return;
+        }
+        
+        // 무기를 꺼내거나 집어넣는 중
+        if (playerActions.isDrawingWeapon || playerActions.isSheathingWeapon) {
+            drawWeaponTransition(x, y, direction);
+            return;
+        }
+        
+        ctx.save();
+        
+        // 방향에 따른 무기 위치 설정
+        let weaponX = x;
+        let weaponY = y;
+        let baseRotation = 0;
+        const tiltDownDeg = 110; // 기본 기울기
+
+        // 움직임 상태 확인
+        const isMoving = keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight;
+        
+        // 팔 움직임 각도 계산 (걷기 애니메이션) - 움직일 때만
+        const time = Date.now() / 1000;  // 시간을 초 단위로 변환
+        const walkCycle = isMoving ? Math.sin(time * 6) : 0;  // 팔 움직임과 동일한 주기 사용
+        const armSwing = walkCycle * 15;
+        const armRad = (armSwing * Math.PI) / 180;
+        
+        // 무기 기본 위치 설정 + 움직일 때만 팔 움직임 반영
+        if (direction === 'left') {
+            weaponX = x + 8 + Math.sin(armRad) * 8;
+            weaponY = y + 4 + Math.cos(armRad) * 8;
+            baseRotation = (tiltDownDeg * Math.PI / 180) * -1 + armRad;
+        } else if (direction === 'right') {
+            weaponX = x - 8 + Math.sin(armRad) * 8;
+            weaponY = y + 4 + Math.cos(armRad) * 8;
+            baseRotation = (tiltDownDeg * Math.PI / 180) + armRad;
+        } else if (direction === 'down') {
+            weaponX = x + 15;  // 오른손에 맞춰 조정
+            weaponY = y + 4 + Math.cos(armRad) * 8;
+            baseRotation = (45 * Math.PI / 180) + armRad;  // 45도 기울여서 자연스럽게
+        } else if (direction === 'up') {
+            weaponX = x + 15;  // 오른손에 맞춰 조정
+            weaponY = y + 4 + Math.cos(armRad) * 8;
+            baseRotation = (-45 * Math.PI / 180) + armRad;  // -45도로 기울여서 뒷모습에 맞게
+        }
+
+        ctx.translate(weaponX, weaponY);
+        ctx.rotate(baseRotation);
+
+        if (playerActions.isAttacking) {
+            drawSwordWithEffect(-4, -12, direction);
+        } else {
+            drawBasicSword(-2, -6, -1, -16, direction);
+        }
+
+        ctx.restore();
+    }
+    
+    // 기본 검 그리기
+    function drawBasicSword(handleX, handleY, bladeX, bladeY, direction = 'down') {
+        if (direction === 'up') {
+            // 뒷모습일 때는 손잡이만 보이게
+            // 검자루
+            ctx.fillStyle = '#8B4513';  // 갈색
+            ctx.fillRect(handleX, handleY, 4, 12);
+            // 키용(가드)
+            ctx.fillStyle = '#A0522D';  // 진한 갈색
+            ctx.fillRect(handleX - 2, handleY - 2, 8, 4);
+        } else {
+            // 다른 방향일 때는 검날과 손잡이 모두 보이게
+            // 검자루 (손잡이)
+            ctx.fillStyle = '#8B4513';  // 갈색
+            ctx.fillRect(handleX, handleY, 4, 12);
+            
+            // 키용 (가드)
+            ctx.fillStyle = '#A0522D';  // 진한 갈색
+            ctx.fillRect(handleX - 2, handleY - 2, 8, 4);
+            
+            // 칼날 메인 부분
+            ctx.fillStyle = '#C0C0C0';  // 은색
+            ctx.fillRect(handleX, handleY - 28, 4, 28);  // 더 길게
+            
+            // 칼날 끝부분 (뾰족하게)
+            ctx.beginPath();
+            ctx.moveTo(handleX, handleY - 28);  // 왼쪽 끝
+            ctx.lineTo(handleX + 2, handleY - 32);  // 중앙 끝점
+            ctx.lineTo(handleX + 4, handleY - 28);  // 오른쪽 끝
+            ctx.fill();
+            
+            // 칼날 하이라이트
+            ctx.fillStyle = '#FFFFFF';
+            ctx.globalAlpha = 0.3;
+            ctx.fillRect(handleX + 1, handleY - 30, 2, 30);
+            ctx.globalAlpha = 1.0;
+        }
+    }
+    
+    // 검 + 이펙트 그리기 (휘두르기 시)
+    function drawSwordWithEffect(x, y, direction) {
+        // 방향별 공격 모션
+        if (direction === 'down') {
+            // 정면 공격: 위에서 아래로 내려찍기
+            const swingAngle = playerActions.attackSwingAngle;
+            ctx.rotate((swingAngle - 45) * Math.PI / 180);  // -45도에서 시작해서 아래로
+        } else if (direction === 'up') {
+            // 후면 공격: 아래에서 위로 올려치기
+            const swingAngle = playerActions.attackSwingAngle;
+            ctx.rotate((swingAngle + 225) * Math.PI / 180);  // 225도에서 시작해서 위로
+        } else if (direction === 'left') {
+            // 왼쪽 공격: 왼쪽에서 오른쪽으로 (오른쪽과 대칭)
+            const swingAngle = playerActions.attackSwingAngle;
+            ctx.rotate((-swingAngle + 90) * Math.PI / 180);  // 90도에서 시작해서 왼쪽으로 (오른쪽의 대칭)
+        } else if (direction === 'right') {
+            // 오른쪽 공격: 왼쪽에서 오른쪽으로
+            const swingAngle = playerActions.attackSwingAngle;
+            ctx.rotate((swingAngle - 90) * Math.PI / 180);  // -90도에서 시작해서 오른쪽으로
+        }
+        
+        // 검 자체
+        drawBasicSword(x, y, x + 1, y - 10, direction);
+    }
+    
+    // 등에 메고 있는 검 그리기
+    function drawSheathedWeapon(x, y, direction) {
+        // 뒷모습일 때만 검집이 보이도록
+        if (direction === 'up') {
+            ctx.fillStyle = '#654321'; // 어두운 갈색 (칼집)
+            ctx.fillRect(x - 3, y - 12, 6, 20);
+            
+            ctx.fillStyle = '#8B4513'; // 검자루만 살짝 보임
+            ctx.fillRect(x - 2, y - 15, 4, 5);
+        }
+    }
+    
+    // 무기 전환 애니메이션
+    function drawWeaponTransition(x, y, direction) {
+        const progress = playerActions.weaponDrawProgress;
+        
+        if (playerActions.isDrawingWeapon) {
+            // 등에서 손으로 이동
+            if (direction === 'down') {
+                const startX = x - 2, startY = y - 12;
+                const endX = x + 18, endY = y - 5;
+                const currentX = startX + (endX - startX) * progress;
+                const currentY = startY + (endY - startY) * progress;
+                
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(currentX, currentY, 3, 12);
+                ctx.fillStyle = '#C0C0C0';
+                ctx.fillRect(currentX + 1, currentY - 10, 1, 10);
+            }
+        } else if (playerActions.isSheathingWeapon) {
+            // 손에서 등으로 이동 (역방향)
+            if (direction === 'down') {
+                const startX = x + 18, startY = y - 5;
+                const endX = x - 2, endY = y - 12;
+                const currentX = startX + (endX - startX) * (1 - progress);
+                const currentY = startY + (endY - startY) * (1 - progress);
+                
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(currentX, currentY, 3, 12);
+                ctx.fillStyle = '#C0C0C0';
+                ctx.fillRect(currentX + 1, currentY - 10, 1, 10);
+            }
+        }
+    }
+
+    // 데미지 숫자 표시
+    function showDamageNumber(x, y, text, color = '#ff4444') {
+        damageNumbers.push({
+            x: x,
+            y: y,
+            text: text,
+            color: color,
+            startTime: Date.now(),
+            duration: 1500
+        });
+    }
+
+    // 데미지 숫자 업데이트 및 렌더링
+    function updateDamageNumbers() {
+        const now = Date.now();
+        
+        // 만료된 숫자들 제거
+        damageNumbers = damageNumbers.filter(dmg => now - dmg.startTime < dmg.duration);
+        
+        // 데미지 숫자들 그리기
+        damageNumbers.forEach(dmg => {
+            const elapsed = now - dmg.startTime;
+            const progress = elapsed / dmg.duration;
+            
+            // 위로 떠오르는 애니메이션
+            const offsetY = progress * -50;
+            const alpha = 1 - progress;
+            
+            ctx.save();
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = dmg.color;
+            ctx.globalAlpha = alpha;
+            ctx.fillText(dmg.text, dmg.x, dmg.y + offsetY);
+            ctx.restore();
+        });
+    }
+
+    // 유틸리티 함수
+    function isPointInCircle(px, py, cx, cy, radius) {
+        const distance = Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        return distance <= radius;
+    }
 
     // 게임 초기화
     function initGame() {
         canvas.style.border = '2px solid #5c67f2';
         canvas.style.borderRadius = '8px';
-        canvas.style.backgroundColor = '#2d3748';
+        canvas.style.backgroundColor = '#10181A';
+
+        // 숲 배경 초기화
+        initForestLayers();
 
         // 키보드 이벤트 리스너
         document.addEventListener('keydown', (e) => {
@@ -146,156 +983,60 @@
             }
         });
 
-        // 마우스 클릭 이벤트 (몬스터 공격, 아이템 수집)
+        // 마우스 클릭 이벤트 (몬스터 공격, 아이템 수집, 플레이어 공격)
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const clickX = e.clientX - rect.left;
             const clickY = e.clientY - rect.top;
 
-            // 몬스터 클릭 체크
-            for (const [monsterId, monster] of Object.entries(gameState.monsters)) {
-                if (isPointInCircle(clickX, clickY, monster.x, monster.y, 25)) {
-                    socket.emit('attack_monster', { monster_id: monsterId });
-                    addGameLog(`🗡️ ${monster.type} 공격!`, 'attack');
-                    return;
+            // 듀얼 중이면 상대방 클릭 가능
+            if (gameState.myPlayer && gameState.myPlayer.in_duel) {
+                for (const [playerId, player] of Object.entries(gameState.players)) {
+                    if (playerId !== gameState.mySessionId && player.in_duel === gameState.myPlayer.in_duel) {
+                        const screenPos = worldToScreen(player.x, player.y);
+                        if (isPointInCircle(clickX, clickY, screenPos.x, screenPos.y, 25)) {
+                            socket.emit('attack_player', { target_player_id: playerId });
+                            addGameLog(`⚔️ ${player.username} 공격!`, 'attack');
+                            return;
+                        }
+                    }
                 }
             }
 
-            // 아이템 클릭 체크
-            for (const [itemId, item] of Object.entries(gameState.items)) {
-                if (isPointInCircle(clickX, clickY, item.x, item.y, 20)) {
-                    socket.emit('collect_item', { item_id: itemId });
-                    return;
+            // 몬스터 클릭 체크 (듀얼 중이 아닐 때만)
+            if (!gameState.myPlayer || !gameState.myPlayer.in_duel) {
+                for (const [monsterId, monster] of Object.entries(gameState.monsters)) {
+                    const screenPos = worldToScreen(monster.x, monster.y);
+                    if (isPointInCircle(clickX, clickY, screenPos.x, screenPos.y, 35)) {
+                        socket.emit('attack_monster', { monster_id: monsterId });
+                        addGameLog(`🗡️ ${monster.type} 공격! 데미지를 입혔습니다!`, 'attack');
+                        showDamageNumber(screenPos.x, screenPos.y, '데미지!');
+                        return;
+                    }
+                }
+
+                // 아이템 클릭 체크
+                for (const [itemId, item] of Object.entries(gameState.items)) {
+                    const screenPos = worldToScreen(item.x, item.y);
+                    if (isPointInCircle(clickX, clickY, screenPos.x, screenPos.y, 25)) {
+                        socket.emit('collect_item', { item_id: itemId });
+                        return;
+                    }
                 }
             }
         });
 
-        // 카메라 시스템
-        let camera = {
-            x: 400,
-            y: 300,
-            targetX: 400,
-            targetY: 300,
-            smoothing: 0.1
-        };
 
-        // 3/4 뷰 변환 함수
-        function worldToScreen(worldX, worldY) {
-            const isoX = (worldX - worldY) * 0.866; // 3/4 각도
-            const isoY = (worldX + worldY) * 0.5;
 
-            return {
-                x: isoX - camera.x + canvas.width / 2,
-                y: isoY - camera.y + canvas.height / 2
-            };
-        }
 
-        // 고급 입체 캐릭터 그리기
-        function drawIsometric3DCharacter(x, y, color) {
-            const time = Date.now() / 1000;
 
-            // 그림자 (타원형)
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-            ctx.beginPath();
-            ctx.ellipse(x, y + 30, 18, 8, 0, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // 다리 (입체적)
-            const legOffset = Math.sin(time * 8) * 2; // 걷기 애니메이션
-            drawLeg(x - 6, y + 15, color, legOffset);
-            drawLeg(x + 6, y + 15, color, -legOffset);
-
-            // 몸체 (원통형)
-            drawCylinder(x, y - 5, 12, 25, color);
-
-            // 팔 (입체적)
-            const armSwing = Math.sin(time * 8) * 0.3;
-            drawArm(x - 14, y - 8, color, armSwing);
-            drawArm(x + 14, y - 8, color, -armSwing);
-
-            // 머리 (구체)
-            drawSphere(x, y - 22, 10, color);
-
-            // 액션 상태 표시 (기존 코드)
-            drawActionEffects(x, y);
-        }
-
-        // 다리 그리기
-        function drawLeg(x, y, color, offset) {
-            ctx.fillStyle = darkenColor(color, 20);
-            ctx.fillRect(x - 3, y + offset, 6, 18);
-
-            // 발
-            ctx.fillStyle = darkenColor(color, 40);
-            ctx.fillRect(x - 4, y + 16 + offset, 8, 4);
-        }
-
-        // 팔 그리기  
-        function drawArm(x, y, color, swing) {
-            ctx.fillStyle = darkenColor(color, 10);
-            ctx.fillRect(x - 3, y + swing * 3, 6, 16);
-
-            // 손
-            ctx.fillStyle = lightenColor(color, 20);
-            ctx.beginPath();
-            ctx.arc(x, y + 14 + swing * 3, 3, 0, 2 * Math.PI);
-            ctx.fill();
-        }
-
-        // 원통 그리기 (몸체)
-        function drawCylinder(x, y, radius, height, color) {
-            // 옆면
-            ctx.fillStyle = darkenColor(color, 15);
-            ctx.fillRect(x - radius, y - height / 2, radius * 2, height);
-
-            // 윗면 (타원)
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.ellipse(x, y - height / 2, radius, radius * 0.3, 0, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // 아랫면
-            ctx.fillStyle = darkenColor(color, 30);
-            ctx.beginPath();
-            ctx.ellipse(x, y + height / 2, radius, radius * 0.3, 0, 0, 2 * Math.PI);
-            ctx.fill();
-        }
-
-        // 구체 그리기 (머리)
-        function drawSphere(x, y, radius, color) {
-            // 그라디언트 효과
-            const gradient = ctx.createRadialGradient(x - 3, y - 3, 0, x, y, radius);
-            gradient.addColorStop(0, lightenColor(color, 30));
-            gradient.addColorStop(1, darkenColor(color, 20));
-
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.arc(x, y, radius, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // 눈
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(x - 3, y - 2, 1.5, 0, 2 * Math.PI);
-            ctx.arc(x + 3, y - 2, 1.5, 0, 2 * Math.PI);
-            ctx.fill();
-        }
-
-        // 색상 밝게/어둡게 하는 유틸리티
+        // 색상 유틸리티 (간단화)
         function lightenColor(color, percent) {
-            const hex = color.replace('#', '');
-            const r = Math.min(255, parseInt(hex.substr(0, 2), 16) + percent);
-            const g = Math.min(255, parseInt(hex.substr(2, 2), 16) + percent);
-            const b = Math.min(255, parseInt(hex.substr(4, 2), 16) + percent);
-            return `rgb(${r}, ${g}, ${b})`;
+            return color; // 임시로 원본 색상 반환
         }
 
         function darkenColor(color, percent) {
-            const hex = color.replace('#', '');
-            const r = Math.max(0, parseInt(hex.substr(0, 2), 16) - percent);
-            const g = Math.max(0, parseInt(hex.substr(2, 2), 16) - percent);
-            const b = Math.max(0, parseInt(hex.substr(4, 2), 16) - percent);
-            return `rgb(${r}, ${g}, ${b})`;
+            return color; // 임시로 원본 색상 반환
         }
 
         // 액션 이펙트 분리
@@ -350,16 +1091,51 @@
             ctx.fillRect(x - 1, y + 18, 5, 8);
         }
 
+        // 듀얼 이벤트 리스너들
+        document.getElementById('request-duel').addEventListener('click', () => {
+            const targetUsername = document.getElementById('duel-target').value.trim();
+            if (targetUsername) {
+                socket.emit('request_duel', { target_username: targetUsername });
+                document.getElementById('duel-target').value = '';
+            }
+        });
+
+        document.getElementById('accept-duel').addEventListener('click', () => {
+            if (gameState.currentDuelRequestId) {
+                socket.emit('accept_duel', { request_id: gameState.currentDuelRequestId });
+                document.getElementById('duel-request-modal').classList.add('hidden');
+            }
+        });
+
+        document.getElementById('decline-duel').addEventListener('click', () => {
+            if (gameState.currentDuelRequestId) {
+                socket.emit('decline_duel', { request_id: gameState.currentDuelRequestId });
+                document.getElementById('duel-request-modal').classList.add('hidden');
+            }
+        });
+
+        document.getElementById('close-duel-notification').addEventListener('click', () => {
+            document.getElementById('duel-notification-modal').classList.add('hidden');
+        });
+
         // 게임 루프 시작
         gameLoop();
     }
 
     // 게임 루프
     function gameLoop() {
-        update();
+        const now = Date.now();
+        if (now >= effects.hitstopUntil) {
+            update();
+        }
         render();
         requestAnimationFrame(gameLoop);
     }
+
+    // 몬스터 AI 업데이트 (적당한 주기로)
+    setInterval(() => {
+        socket.emit('monster_ai_update');
+    }, 100); // 0.1초마다 (10fps)
 
     // 액션 입력 처리
     function handleActionInput(keyCode) {
@@ -375,15 +1151,23 @@
                 playerActions.isBlocking = true;
                 playerActions.actionState = 'blocking';
                 break;
-            case 'KeyD': // 공격
-                if (!playerActions.isAttacking && playerActions.actionState === 'idle') {
-                    executeAttack();
+            case 'KeyD': // 공격 (검 휘두르기)
+                if (!playerActions.isAttacking && playerActions.actionState === 'idle' && playerActions.isWeaponDrawn) {
+                    executeSwingAttack();
                 }
                 break;
             case 'KeyE': // 패링
                 if (!playerActions.isParrying && playerActions.parryCooldown < now) {
                     executeParry();
                 }
+                break;
+            case 'KeyQ': // 무기 집어넣기/꺼내기
+                if (playerActions.weaponToggleCooldown < now && !playerActions.isDrawingWeapon && !playerActions.isSheathingWeapon) {
+                    toggleWeapon();
+                }
+                break;
+            case 'KeyZ': // 파밍 (아이템 수집)
+                collectNearbyItems();
                 break;
         }
     }
@@ -405,16 +1189,130 @@
     }
 
     // 공격 실행
-    function executeAttack() {
+    // 검 휘두르기 공격 실행
+    function executeSwingAttack() {
         playerActions.isAttacking = true;
         playerActions.actionState = 'attacking';
+        playerActions.attackSwingAngle = 0; // 휘두르기 시작 각도
 
+        // 검 휘두르기 애니메이션 (0도에서 120도까지)
+        const swingDuration = 300;
+        const startTime = Date.now();
+        
+        const animateSwing = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / swingDuration, 1);
+            
+            // 검 휘두르기 각도 (0 -> 120도)
+            playerActions.attackSwingAngle = progress * 120;
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateSwing);
+            } else {
+                // 공격 완료
+                playerActions.isAttacking = false;
+                playerActions.attackSwingAngle = 0;
+                if (playerActions.actionState === 'attacking') {
+                    playerActions.actionState = 'idle';
+                }
+            }
+        };
+        
+        animateSwing();
+
+        // 주변 몬스터 찾아서 공격 (휘두르기 중간 지점에서)
         setTimeout(() => {
-            playerActions.isAttacking = false;
-            playerActions.actionState = 'idle';
-        }, actionTimers.attack.duration);
+            attackNearbyMonster();
+            // 타격감 강화
+            startCameraShake(4, 120);
+            triggerHitstop(55);
+        }, swingDuration / 2);
 
-        addGameLog('⚔️ 공격!', 'attack');
+        addGameLog('⚔️ 검 휘두르기!', 'action');
+    }
+
+    // 무기 토글 (집어넣기/꺼내기)
+    function toggleWeapon() {
+        const animationDuration = 500; // 0.5초
+        
+        if (playerActions.isWeaponDrawn) {
+            // 무기 집어넣기
+            playerActions.isSheathingWeapon = true;
+            playerActions.weaponDrawProgress = 1;
+            
+            const sheathAnimation = () => {
+                playerActions.weaponDrawProgress -= 0.05; // 점진적으로 감소
+                
+                if (playerActions.weaponDrawProgress <= 0) {
+                    playerActions.weaponDrawProgress = 0;
+                    playerActions.isWeaponDrawn = false;
+                    playerActions.isSheathingWeapon = false;
+                    addGameLog('🗡️ 검을 집어넣었습니다', 'action');
+                } else {
+                    requestAnimationFrame(sheathAnimation);
+                }
+            };
+            sheathAnimation();
+            
+        } else {
+            // 무기 꺼내기
+            playerActions.isDrawingWeapon = true;
+            playerActions.weaponDrawProgress = 0;
+            
+            const drawAnimation = () => {
+                playerActions.weaponDrawProgress += 0.05; // 점진적으로 증가
+                
+                if (playerActions.weaponDrawProgress >= 1) {
+                    playerActions.weaponDrawProgress = 1;
+                    playerActions.isWeaponDrawn = true;
+                    playerActions.isDrawingWeapon = false;
+                    addGameLog('⚔️ 검을 꺼냈습니다', 'action');
+                } else {
+                    requestAnimationFrame(drawAnimation);
+                }
+            };
+            drawAnimation();
+        }
+        
+        playerActions.weaponToggleCooldown = Date.now() + 600; // 0.6초 쿨다운
+    }
+
+    // 주변 몬스터 공격
+    function attackNearbyMonster() {
+        if (!gameState.myPlayer) return;
+
+        const playerX = gameState.myPlayer.x;
+        const playerY = gameState.myPlayer.y;
+        const attackRange = 50; // 공격 범위 (축소)
+        let targetFound = false;
+
+        // 가장 가까운 몬스터 찾기
+        let closestMonster = null;
+        let closestDistance = attackRange;
+
+        for (const [monsterId, monster] of Object.entries(gameState.monsters)) {
+            const distance = Math.sqrt(
+                Math.pow(monster.x - playerX, 2) + Math.pow(monster.y - playerY, 2)
+            );
+
+            if (distance <= attackRange && distance < closestDistance) {
+                closestMonster = { id: monsterId, monster: monster };
+                closestDistance = distance;
+                targetFound = true;
+            }
+        }
+
+        // 가장 가까운 몬스터 공격
+        if (targetFound && closestMonster) {
+            socket.emit('attack_monster', { monster_id: closestMonster.id });
+            addGameLog(`🗡️ ${closestMonster.monster.type} 공격! 데미지를 입혔습니다!`, 'attack');
+            
+            // 데미지 숫자 표시
+            const screenPos = worldToScreen(closestMonster.monster.x, closestMonster.monster.y);
+            showDamageNumber(screenPos.x, screenPos.y, '타격!', '#ffaa00');
+        } else {
+            addGameLog('🚫 공격 범위에 몬스터가 없습니다!', 'info');
+        }
     }
 
     // 패링 실행
@@ -431,6 +1329,35 @@
         }, actionTimers.parry.duration);
 
         addGameLog('🛡️ 패링!', 'action');
+    }
+
+    // 파밍 (주변 아이템 수집)
+    function collectNearbyItems() {
+        if (!gameState.myPlayer) return;
+
+        const playerX = gameState.myPlayer.x;
+        const playerY = gameState.myPlayer.y;
+        const collectRange = 100; // 수집 범위
+        let itemsCollected = 0;
+
+        // 주변 아이템들 확인
+        for (const [itemId, item] of Object.entries(gameState.items)) {
+            const distance = Math.sqrt(
+                Math.pow(item.x - playerX, 2) + Math.pow(item.y - playerY, 2)
+            );
+
+            // 범위 내 아이템 수집
+            if (distance <= collectRange) {
+                socket.emit('collect_item', { item_id: itemId });
+                itemsCollected++;
+            }
+        }
+
+        if (itemsCollected > 0) {
+            addGameLog(`💰 ${itemsCollected}개 아이템 수집 완료!`, 'success');
+        } else {
+            addGameLog('📭 주변에 수집할 아이템이 없습니다.', 'info');
+        }
     }
 
     // 게임 업데이트
@@ -459,22 +1386,26 @@
         let newX = gameState.myPlayer.x;
         let newY = gameState.myPlayer.y;
 
-        // 이동 처리
-        if (keys['KeyW'] || keys['ArrowUp']) {
+        // 이동 처리 (방향키만)
+        if (keys['ArrowUp']) {
             newY = Math.max(25, newY - moveSpeed);
             moved = true;
+            gameState.playerDirection = 'up'; // 위쪽을 보고 있음
         }
-        if (keys['KeyS'] || keys['ArrowDown']) {
+        if (keys['ArrowDown']) {
             newY = Math.min(canvas.height - 25, newY + moveSpeed);
             moved = true;
+            gameState.playerDirection = 'down'; // 아래쪽을 보고 있음
         }
-        if (keys['KeyA'] || keys['ArrowLeft']) {
+        if (keys['ArrowLeft']) {
             newX = Math.max(25, newX - moveSpeed);
             moved = true;
+            gameState.playerDirection = 'left'; // 왼쪽을 보고 있음
         }
-        if (keys['KeyD'] || keys['ArrowRight']) {
+        if (keys['ArrowRight']) {
             newX = Math.min(canvas.width - 25, newX + moveSpeed);
             moved = true;
+            gameState.playerDirection = 'right'; // 오른쪽을 보고 있음
         }
 
         if (moved) {
@@ -486,12 +1417,24 @@
 
     // 렌더링
     function render() {
-        // 화면 클리어
-        ctx.fillStyle = '#2d3748';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // 카메라 셰이크 적용
+        let shakeX = 0, shakeY = 0;
+        if (effects.cameraShake.amp > 0) {
+            const progress = (Date.now() - effects.cameraShake.start) / effects.cameraShake.duration;
+            if (progress >= 1) {
+                effects.cameraShake.amp = 0;
+            } else {
+                shakeX = (Math.random() * 2 - 1) * effects.cameraShake.amp;
+                shakeY = (Math.random() * 2 - 1) * effects.cameraShake.amp;
+                effects.cameraShake.amp *= effects.cameraShake.decay;
+            }
+        }
 
-        // 격자 그리기
-        drawGrid();
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+
+        // 숲 배경 그리기
+        drawForestBackground();
 
         // 아이템 렌더링
         for (const [itemId, item] of Object.entries(gameState.items)) {
@@ -506,7 +1449,115 @@
         // 플레이어들 렌더링
         for (const [sessionId, player] of Object.entries(gameState.players)) {
             drawPlayer(player, sessionId === gameState.mySessionId);
+            
+
         }
+
+        // 데미지 숫자 업데이트
+        updateDamageNumbers();
+
+        ctx.restore();
+    }
+
+    // 숲 배경 생성
+    function initForestLayers() {
+        // 원거리 나무
+        forest.far = [];
+        for (let i = -200; i < canvas.width + 200; i += 80) {
+            forest.far.push({ x: i + Math.random() * 30, h: 90 + Math.random() * 30 });
+        }
+        // 중거리 나무
+        forest.mid = [];
+        for (let i = -200; i < canvas.width + 200; i += 120) {
+            forest.mid.push({ x: i + Math.random() * 40, h: 130 + Math.random() * 40 });
+        }
+        // 낙엽 초기화
+        forest.leaves = [];
+    }
+
+    function drawForestBackground() {
+        // 캐노피 그라데이션 배경
+        const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        bg.addColorStop(0, '#0F2F2E');
+        bg.addColorStop(1, '#132B2A');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 원거리 레이어(느린 파라랙스)
+        ctx.fillStyle = 'rgba(14,31,32,0.6)';
+        forest.far.forEach(t => {
+            const px = ((t.x - camera.x * 0.2) % (canvas.width + 200)) - 100;
+            drawTreeSilhouette(px, canvas.height - 80, t.h, 0.6);
+        });
+        // 중거리 레이어
+        ctx.fillStyle = 'rgba(20,52,52,0.85)';
+        forest.mid.forEach(t => {
+            const px = ((t.x - camera.x * 0.35) % (canvas.width + 240)) - 120;
+            drawTreeSilhouette(px, canvas.height - 60, t.h, 0.9);
+        });
+
+        // 지면 텍스처 도트
+        ctx.fillStyle = 'rgba(45,84,67,0.5)';
+        for (let i = 0; i < 80; i++) {
+            const x = (i * 13 + (camera.x * 0.1)) % canvas.width;
+            const y = canvas.height - 40 + (i * 7 % 40);
+            ctx.fillRect(x, y, 2, 2);
+        }
+
+        // 낙엽 업데이트/드로우
+        updateLeaves();
+        forest.leaves.forEach(l => {
+            ctx.fillStyle = l.color;
+            ctx.beginPath();
+            ctx.ellipse(l.x, l.y, 3, 2, l.rot, 0, 2 * Math.PI);
+            ctx.fill();
+        });
+    }
+
+    function drawTreeSilhouette(x, baseY, h, alpha) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        // 트렁크
+        ctx.fillRect(x - 3, baseY - h, 6, h);
+        // 캐노피
+        ctx.beginPath();
+        ctx.ellipse(x, baseY - h, 28, 18, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x - 15, baseY - h + 10, 20, 14, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x + 15, baseY - h + 8, 22, 16, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function updateLeaves() {
+        // 스폰
+        if (forest.leaves.length < 10 && Math.random() < 0.2) {
+            forest.leaves.push({
+                x: Math.random() * canvas.width,
+                y: -10,
+                vy: 20 + Math.random() * 20,
+                rot: Math.random() * Math.PI,
+                color: Math.random() < 0.5 ? 'rgba(82,140,96,0.8)' : 'rgba(196,176,80,0.8)'
+            });
+        }
+        const dt = 1/60;
+        forest.leaves.forEach(l => {
+            l.y += l.vy * dt;
+            l.x += Math.sin(l.y * 0.05) * 0.6;
+            l.rot += 0.03;
+        });
+        forest.leaves = forest.leaves.filter(l => l.y < canvas.height);
+    }
+
+    // 카메라 셰이크/히트스톱 유틸
+    function startCameraShake(amp = 4, duration = 120) {
+        effects.cameraShake = { amp, duration, start: Date.now(), decay: 0.85 };
+    }
+    function triggerHitstop(ms = 55) {
+        effects.hitstopUntil = Math.max(effects.hitstopUntil, Date.now() + ms);
     }
 
     // 격자 그리기
@@ -529,23 +1580,81 @@
         }
     }
 
+    function drawEnhancedGrid() {
+        const gridSize = 50;
+        const offsetX = (camera.x % gridSize);
+        const offsetY = (camera.y % gridSize);
+        
+        // 주 격자선
+        ctx.strokeStyle = 'rgba(74, 85, 104, 0.3)';
+        ctx.lineWidth = 1;
+
+        for (let x = -offsetX; x < canvas.width + gridSize; x += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+
+        for (let y = -offsetY; y < canvas.height + gridSize; y += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+        
+        // 보조 격자선 (더 세밀하게)
+        const smallGridSize = 25;
+        const smallOffsetX = (camera.x % smallGridSize);
+        const smallOffsetY = (camera.y % smallGridSize);
+        
+        ctx.strokeStyle = 'rgba(74, 85, 104, 0.1)';
+        ctx.lineWidth = 0.5;
+
+        for (let x = -smallOffsetX; x < canvas.width + smallGridSize; x += smallGridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+
+        for (let y = -smallOffsetY; y < canvas.height + smallGridSize; y += smallGridSize) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    }
+
     // 플레이어 그리기 (3/4 뷰)
     function drawPlayer(player, isMe) {
         const screenX = worldToScreen(player.x, player.y).x;
         const screenY = worldToScreen(player.x, player.y).y;
 
-        // 캐릭터 몸체 (입체 효과)
-        ctx.fillStyle = isMe ? '#4CAF50' : '#2196F3';
-        drawIsometric3DCharacter(screenX, screenY, isMe ? '#4CAF50' : '#2196F3');
-
-        // 플레이어 이름
+        // 이동 상태 확인 (키가 눌려있으면 움직이는 것으로 간주)
+        const isMoving = isMe && (keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight);
+        
+        // 캐릭터 몸체 (입체 효과 + 애니메이션) - 흰색 팔레트 통일
         ctx.fillStyle = '#FFFFFF';
+        const direction = isMe ? gameState.playerDirection : 'down';
+        drawIsometric3DCharacter(screenX, screenY, '#FFFFFF', isMoving, direction);
+
+        // 플레이어 이름 (듀얼 중이면 빨간색)
+        ctx.fillStyle = player.in_duel ? '#FF4444' : '#FFFFFF';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(player.username, screenX, screenY - 25);
 
         // 레벨 표시
+        ctx.fillStyle = '#FFFFFF';
         ctx.fillText(`Lv.${player.level}`, screenX, screenY + 35);
+        
+        // 듀얼 중 표시
+        if (player.in_duel) {
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold 10px Arial';
+            ctx.fillText('⚔️ DUEL', screenX, screenY - 40);
+        }
 
         // HP 바
         const barWidth = 30;
@@ -561,30 +1670,75 @@
     // 몬스터 그리기 (3/4 뷰)
     function drawMonster(monster) {
         const screenPos = worldToScreen(monster.x, monster.y);
+        const isBoss = monster.monster_type === 'boss';
+        const size = isBoss ? 35 : 25;
 
         // 몬스터 그림자
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fillRect(screenPos.x - 20, screenPos.y + 25, 40, 10);
+        ctx.beginPath();
+        ctx.ellipse(screenPos.x, screenPos.y + size + 5, size, 8, 0, 0, 2 * Math.PI);
+        ctx.fill();
 
-        // 몬스터 본체 (입체)
-        ctx.font = '35px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(monster.type, screenPos.x, screenPos.y);
+        // 보스 특별 효과
+        if (isBoss) {
+            const time = Date.now() / 1000;
+            const auraSize = size + Math.sin(time * 3) * 8;
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+            ctx.beginPath();
+            ctx.arc(screenPos.x, screenPos.y, auraSize, 0, 2 * Math.PI);
+            ctx.fill();
+        }
 
-        // HP 바
-        const barWidth = 40;
-        const barHeight = 6;
+        // 간단한 몬스터 (원형)
+        let bodyColor;
+        if (monster.type === '👹') {
+            bodyColor = '#8B0000'; // 어두운 빨강
+        } else if (monster.type === '👾') {
+            bodyColor = '#4B0082'; // 보라색
+        } else if (monster.type === '🤖') {
+            bodyColor = '#708090'; // 회색
+        } else if (isBoss) {
+            bodyColor = '#8B0000'; // 보스는 진한 빨강
+        }
+
+        // 몬스터 몸체 (원형)
+        ctx.fillStyle = bodyColor;
+        ctx.beginPath();
+        ctx.arc(screenPos.x, screenPos.y, size/2, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 눈 (빨간 점)
+        ctx.fillStyle = '#FF0000';
+        ctx.beginPath();
+        ctx.arc(screenPos.x - 5, screenPos.y - 5, 2, 0, 2 * Math.PI);
+        ctx.arc(screenPos.x + 5, screenPos.y - 5, 2, 0, 2 * Math.PI);
+        ctx.fill();
+        // 그림자 효과 리셋
+        ctx.shadowBlur = 0;
+
+        // HP 바 (보스는 더 큰 HP바)
+        const barWidth = isBoss ? 80 : 40;
+        const barHeight = isBoss ? 8 : 6;
         const hpPercent = monster.hp / monster.max_hp;
 
         ctx.fillStyle = '#FF0000';
-        ctx.fillRect(screenPos.x - barWidth / 2, screenPos.y - 25, barWidth, barHeight);
+        ctx.fillRect(screenPos.x - barWidth / 2, screenPos.y - (isBoss ? 35 : 25), barWidth, barHeight);
         ctx.fillStyle = '#00FF00';
-        ctx.fillRect(screenPos.x - barWidth / 2, screenPos.y - 25, barWidth * hpPercent, barHeight);
+        ctx.fillRect(screenPos.x - barWidth / 2, screenPos.y - (isBoss ? 35 : 25), barWidth * hpPercent, barHeight);
 
         // HP 텍스트
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = '10px Arial';
-        ctx.fillText(`${monster.hp}/${monster.max_hp}`, screenPos.x, screenPos.y - 30);
+        ctx.font = isBoss ? '12px Arial' : '10px Arial';
+        ctx.fillText(`${monster.hp}/${monster.max_hp}`, screenPos.x, screenPos.y - (isBoss ? 40 : 30));
+        
+        // 보스 타이틀
+        if (isBoss) {
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('🔥 BOSS 🔥', screenPos.x, screenPos.y - 55);
+        }
+        
+
     }
 
 
@@ -666,6 +1820,7 @@
         gameState.players = data.players;
         gameState.monsters = data.monsters;
         gameState.items = data.items;
+        gameState.duels = data.duels || {};
 
         if (gameState.mySessionId && data.players[gameState.mySessionId]) {
             gameState.myPlayer = data.players[gameState.mySessionId];
@@ -697,6 +1852,11 @@
         if (gameState.monsters[data.monster_id]) {
             gameState.monsters[data.monster_id].hp = data.hp;
             addGameLog(`💥 몬스터가 ${data.damage} 데미지를 받았습니다!`, 'combat');
+            
+            // 몬스터 위치에 데미지 숫자 표시
+            const monster = gameState.monsters[data.monster_id];
+            const screenPos = worldToScreen(monster.x, monster.y);
+            showDamageNumber(screenPos.x, screenPos.y, `-${data.damage}`, '#ff4444');
         }
     });
 
@@ -782,6 +1942,77 @@
             addGameLog('❌ 던전 입장에는 티켓 3개가 필요합니다!', 'error');
         }
     });
+
+    // 듀얼 관련 소켓 이벤트들
+    socket.on('duel_request_sent', (data) => {
+        addGameLog(`⚔️ ${data.target_username}님에게 듀얼 신청을 보냈습니다.`, 'duel');
+    });
+
+    socket.on('duel_request_received', (data) => {
+        gameState.currentDuelRequestId = data.request_id;
+        document.getElementById('duel-request-message').textContent = 
+            `${data.from_username}님이 듀얼을 신청했습니다!`;
+        document.getElementById('duel-request-modal').classList.remove('hidden');
+        addGameLog(`⚔️ ${data.from_username}님에게서 듀얼 신청이 왔습니다!`, 'duel');
+    });
+
+    socket.on('duel_started', (data) => {
+        addGameLog(`⚔️ ${data.opponent}님과 듀얼이 시작되었습니다!`, 'duel');
+        showDuelNotification('듀얼 시작!', `${data.opponent}님과 1:1 전투가 시작됩니다!`);
+    });
+
+    socket.on('duel_ended', (data) => {
+        if (data.result === 'victory') {
+            addGameLog(`🏆 ${data.loser}님과의 듀얼에서 승리했습니다! (+50점)`, 'victory');
+            showDuelNotification('승리!', `${data.loser}님과의 듀얼에서 승리했습니다!`);
+        } else {
+            addGameLog(`💀 ${data.winner}님과의 듀얼에서 패배했습니다.`, 'defeat');
+            showDuelNotification('패배...', `${data.winner}님과의 듀얼에서 패배했습니다.`);
+        }
+    });
+
+    socket.on('duel_declined', (data) => {
+        addGameLog(`😔 ${data.from_username}님이 듀얼 신청을 거절했습니다.`, 'info');
+    });
+
+    socket.on('duel_error', (data) => {
+        addGameLog(`❌ 듀얼 오류: ${data.message}`, 'error');
+    });
+
+    socket.on('player_damaged', (data) => {
+        addGameLog(`💥 ${data.attacker}님이 ${data.target}님에게 ${data.damage} 데미지를 입혔습니다!`, 'combat');
+    });
+
+    socket.on('player_damaged_by_monster', (data) => {
+        addGameLog(`👹 ${data.monster_type} 몬스터가 플레이어에게 ${data.damage} 데미지를 입혔습니다!`, 'combat');
+        
+        // 내가 공격당했다면 데미지 숫자 표시
+        if (data.player_id === gameState.mySessionId && gameState.myPlayer) {
+            const screenPos = worldToScreen(gameState.myPlayer.x, gameState.myPlayer.y);
+            showDamageNumber(screenPos.x, screenPos.y, `-${data.damage}`, '#ff0000');
+            
+            // HP 업데이트
+            gameState.myPlayer.hp = data.hp;
+            updatePlayerInfo({ hp: data.hp });
+            
+            // HP가 0이 되면 사망 처리
+            if (data.hp <= 0) {
+                addGameLog('💀 당신이 사망했습니다! HP가 자동으로 회복됩니다.', 'defeat');
+                setTimeout(() => {
+                    gameState.myPlayer.hp = 100;
+                    updatePlayerInfo({ hp: 100 });
+                    addGameLog('💚 HP가 완전히 회복되었습니다!', 'success');
+                }, 3000);
+            }
+        }
+    });
+
+    // 듀얼 알림 모달 표시 함수
+    function showDuelNotification(title, message) {
+        document.getElementById('duel-notification-title').textContent = title;
+        document.getElementById('duel-notification-message').textContent = message;
+        document.getElementById('duel-notification-modal').classList.remove('hidden');
+    }
 
     // 게임 시작
     window.addEventListener('load', initGame);

@@ -2,41 +2,119 @@
 {% extends "layout.html" %}
 {% block title %}{{ t.my_profile }}{% endblock %}
 {% block content %}
-    <div class="container">
-        <h1>{{ t.my_profile }}</h1>
-        <div class="nav-links">
-            <a href="{{ url_for('index') }}" class="nav-link">{{ t.back_to_goal_list }}</a>
-        </div>
-        <div class="profile-card">
-            <div class="profile-header">
-                <h2>{{ t.player_stats }}</h2>
+    <div class="container dashboard-layout">
+        <!-- 프로필 헤더 -->
+        <div class="profile-header glass-card">
+            <div class="profile-info">
+                <div class="profile-avatar">
+                    <i class="ri-user-smile-line"></i>
+                </div>
+                <div class="profile-details">
+                    <h1>{{ session.username }}</h1>
+                    <p class="subtitle">{{ t.member_since }} {{ player.join_date }}</p>
+                </div>
             </div>
-            <div class="profile-body">
-                <div class="stat-item"><span>{{ t.total_score }}</span><span>{{ player.score }} ✨</span></div>
-                <div class="stat-item"><span>{{ t.tickets }}</span><span>{{ player.tickets }} 🎟️</span></div>
-                <div class="stat-item"><span>{{ t.items_owned }}</span><span>{{ player['items']|length }}</span></div>
+            <div class="profile-actions">
+                <button class="glass-button">
+                    <i class="ri-edit-line"></i>
+                    {{ t.edit_profile }}
+                </button>
             </div>
         </div>
 
-        <div class="badge-management">
-            <h2>{{ t.my_badges }}</h2>
-            <div class="badge-grid">
+        <!-- 통계 섹션 -->
+        <div class="stats-row">
+            <div class="stat-card glass-card">
+                <div class="stat-icon">
+                    <i class="ri-star-line"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>{{ player.score }}</h3>
+                    <p>{{ t.total_score }}</p>
+                </div>
+            </div>
+            <div class="stat-card glass-card">
+                <div class="stat-icon">
+                    <i class="ri-ticket-2-line"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>{{ player.tickets }}</h3>
+                    <p>{{ t.tickets }}</p>
+                </div>
+            </div>
+            <div class="stat-card glass-card">
+                <div class="stat-icon">
+                    <i class="ri-flag-line"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>{{ stats.completed_goals }}</h3>
+                    <p>{{ t.goals_completed }}</p>
+                </div>
+            </div>
+            <div class="stat-card glass-card">
+                <div class="stat-icon">
+                    <i class="ri-trophy-line"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>{{ stats.completion_rate }}%</h3>
+                    <p>{{ t.completion_rate }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 업적 섹션 -->
+        <div class="achievements-section glass-card">
+            <div class="section-header">
+                <i class="ri-medal-line"></i>
+                <h2>{{ t.achievements }}</h2>
+            </div>
+            <div class="achievements-grid">
                 {% for badge_id, badge_info in badges.items() %}
-                    <div class="badge-item">
-                        <div class="badge-icon-large">{{ badge_info.icon }}</div>
-                        <div class="badge-name">{{ badge_info.name }}</div>
-                        <form action="{{ url_for('equip_badge', item_id=badge_id) }}" method="POST">
-                            {% if player.equipped_badge == badge_id %}
-                                <button type="submit" class="equip-btn" disabled>{{ t.equipped }}</button>
-                            {% else %}
-                                <button type="submit" class="equip-btn">{{ t.equip }}</button>
-                            {% endif %}
-                        </form>
+                    <div class="achievement-card {{ 'completed' if badge_id in player.badges else '' }}">
+                        <div class="achievement-icon">
+                            <i class="ri-{{ badge_info.icon_class }}-line"></i>
+                        </div>
+                        <div class="achievement-info">
+                            <h3>{{ badge_info.name }}</h3>
+                            <p>{{ badge_info.description }}</p>
+                        </div>
+                        {% if badge_id in player.badges %}
+                            <div class="achievement-status">
+                                <i class="ri-checkbox-circle-line"></i>
+                                {{ t.unlocked }}
+                            </div>
+                        {% endif %}
                     </div>
-                {% else %}
-                    <p>{{ t.no_badges_yet }}</p>
                 {% endfor %}
             </div>
+        </div>
+
+        <!-- 활동 히스토리 -->
+        <div class="activity-section glass-card">
+            <div class="section-header">
+                <i class="ri-history-line"></i>
+                <h2>{{ t.recent_activity }}</h2>
+            </div>
+            <div class="activity-timeline">
+                {% for activity in activities %}
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="ri-{{ activity.icon }}-line"></i>
+                        </div>
+                        <div class="activity-content">
+                            <p>{{ activity.description }}</p>
+                            <span class="activity-time">{{ activity.time }}</span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <a href="{{ url_for('index') }}" class="glass-button">
+                <i class="ri-arrow-left-line"></i>
+                {{ t.back_to_goal_list }}
+            </a>
         </div>
     </div>
 {% endblock %}

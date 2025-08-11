@@ -1,63 +1,176 @@
-<!-- templates/index.html -->
 {% extends "layout.html" %}
 {% block title %}{{ t.dashboard }}{% endblock %}
+
 {% block content %}
-    <div class="container">
-        <h1>{{ t.brand }} Project</h1>
-        <div class="nav-links">
-            <a href="{{ url_for('profile') }}" class="nav-link" style="background-color: #6f42c1;">{{ t.my_profile }} 👤</a>
-            <a href="{{ url_for('game_room') }}" class="nav-link">{{ t.go_to_game_room }} 🎮</a>
-            <a href="{{ url_for('shop') }}" class="nav-link" style="background-color: #17a2b8;">{{ t.go_to_shop }} 🏪</a>
-        </div>
-
-        <div class="player-stats">
-            <span>{{ t.my_tickets }}</span>
-            <span id="ticket-display" class="ticket-count">{{ tickets }} 🎟️</span>
-        </div>
-        
-        <button id="watch-ad-btn" class="ad-button">{{ t.watch_ad_for_ticket }}</button>
-
-        <p>{{ t.turn_goals_into_quests }}</p>
-
-        <form id="add-goal-form" method="POST">
-            <input id="goal-input" type="text" name="goal" placeholder="{{ t.enter_new_goal }}" required>
-            <input type="date" name="deadline" class="deadline-input">
-            <div class="checkbox-wrapper">
-                <input type="checkbox" id="is_recurring" name="is_recurring">
-                <label for="is_recurring">{{ t.daily_goal }} 🔄</label>
+    <div class="container split-layout">
+        <!-- 왼쪽 사이드바 -->
+        <div class="sidebar">
+            <div class="user-profile glass-card">
+                <div class="user-avatar">
+                    <i class="ri-user-smile-line"></i>
+                </div>
+                <h2>{{ session.username }}</h2>
+                <div class="user-stats">
+                    <div class="stat">
+                        <i class="ri-star-line"></i>
+                        <span>{{ player_data.score }}</span>
+                    </div>
+                    <div class="stat">
+                        <i class="ri-ticket-2-line"></i>
+                        <span>{{ tickets }}</span>
+                    </div>
+                </div>
             </div>
-            <button type="submit">{{ t.add_goal }}</button>
-        </form>
 
-        <div class="goal-list-container">
-            <h2>{{ t.my_goals }}</h2>
-            <ul id="goal-list">
+            <!-- 진행도 카드 -->
+            <div class="progress-dashboard glass-card">
+                <div class="section-header">
+                    <i class="ri-line-chart-line"></i>
+                    <h2>{{ t.weekly_completion }}</h2>
+                </div>
+                <div class="progress-chart">
+                    <div class="chart-grid">
+                        <div class="chart-line"></div>
+                        <div class="chart-line"></div>
+                        <div class="chart-line"></div>
+                        <div class="chart-line"></div>
+                    </div>
+                    <div class="chart-bars">
+                        {% for day in ['08/07', '08/08', '08/09', '08/10', '08/11'] %}
+                        <div class="chart-bar">
+                            <div class="bar-fill" style="height: {{ range(30, 90)|random }}%"></div>
+                            <span class="bar-label">{{ day }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="chart-legend">
+                    <div class="legend-item">
+                        <i class="ri-checkbox-circle-line"></i>
+                        <span>{{ t.completed_tasks }}</span>
+                    </div>
+                    <div class="total-score">
+                        <span>{{ t.total_score }}</span>
+                        <span class="score-value">203 <i class="ri-star-line"></i></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions vertical">
+                <button id="watch-ad-btn" class="glass-button action-button">
+                    <i class="ri-movie-line"></i>
+                    {{ t.watch_ad_for_ticket }}
+                </button>
+                <a href="{{ url_for('game_room') }}" class="glass-button action-button">
+                    <i class="ri-gamepad-line"></i>
+                    {{ t.go_to_game_room }}
+                </a>
+                <a href="{{ url_for('calendar') }}" class="glass-button action-button">
+                    <i class="ri-calendar-line"></i>
+                    {{ t.calendar }}
+                </a>
+            </div>
+        </div>
+
+        <!-- 메인 컨텐츠 -->
+        <div class="main-content">
+            <div class="dashboard-header glass-card">
+                <h1>{{ t.welcome_message }}, <span class="accent">{{ session.username }}</span>!</h1>
+                <p class="subtitle">{{ t.turn_goals_into_quests }}</p>
+            </div>
+
+            <!-- 목표 섹션 -->
+            <div class="goals-section glass-card">
+            <div class="section-header">
+                <i class="ri-flag-line"></i>
+                <h2>{{ t.my_goals }}</h2>
+            </div>
+
+            <form id="add-goal-form" method="POST" class="goal-form glass-form">
+                <div class="form-group">
+                    <i class="ri-edit-line"></i>
+                    <input type="text" name="goal" class="glass-input" placeholder="{{ t.enter_new_goal }}" required>
+                </div>
+                <div class="form-group">
+                    <i class="ri-calendar-line"></i>
+                    <input type="date" name="deadline" class="glass-input">
+                </div>
+                <div class="form-group checkbox-wrapper">
+                    <input type="checkbox" id="is_recurring" name="is_recurring">
+                    <label for="is_recurring">
+                        <i class="ri-refresh-line"></i>
+                        {{ t.daily_goal }}
+                    </label>
+                </div>
+                <button type="submit" class="glass-button">
+                    <i class="ri-add-line"></i>
+                    {{ t.add_goal }}
+                </button>
+            </form>
+
+            <div class="goals-grid" id="goal-list">
                 {% for goal in goal_list %}
-                    <li class="{{ 'completed' if goal.status == 'Completed' else '' }} {{ 'overdue' if goal.deadline and goal.deadline < today and goal.status != 'Completed' else '' }}" data-id="{{ loop.index0 }}">
-                        <div class="goal-text">
-                            {% if goal.type == 'recurring' %}
-                                <span class="recurring-icon">🔄</span>
-                            {% endif %}
-                            <span>{{ goal.text }}</span>
-                            {% if goal.deadline %}
-                                <span class="deadline-text"> ({{ t.deadline }}: {{ goal.deadline }})</span>
-                            {% endif %}
+                    <div class="goal-card glass-card {{ 'completed' if goal.status == 'Completed' else '' }} {{ 'overdue' if goal.deadline and goal.deadline < today and goal.status != 'Completed' else '' }}" data-id="{{ loop.index0 }}">
+                        <div class="goal-content">
+                            <div class="goal-header">
+                                <div class="goal-icon">
+                                    {% if goal.type == 'recurring' %}
+                                        <i class="ri-refresh-line"></i>
+                                    {% else %}
+                                        <i class="ri-flag-line"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="goal-info">
+                                    <h3>{{ goal.text }}</h3>
+                                    {% if goal.deadline %}
+                                        <p class="goal-deadline">
+                                            <i class="ri-calendar-line"></i>
+                                            {{ goal.deadline }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="goal-progress">
+                                <div class="progress-info">
+                                    <span class="progress-label">{{ t.progress }}</span>
+                                    <span class="progress-value">{{ '100%' if goal.status == 'Completed' else '0%' }}</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ '100%' if goal.status == 'Completed' else '0%' }}"></div>
+                                </div>
+                            </div>
+                            <div class="goal-actions">
+                                <button class="glass-button toggle-btn" data-action="toggle">
+                                    {% if goal.status == 'Completed' %}
+                                        <i class="ri-checkbox-circle-line"></i>
+                                    {% else %}
+                                        <i class="ri-checkbox-blank-circle-line"></i>
+                                    {% endif %}
+                                </button>
+                                <button class="glass-button delete-btn" data-action="delete">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="goal-actions">
-                            <button class="toggle-btn" data-action="toggle">{{ t.toggle }}</button>
-                            <button class="delete-btn" data-action="delete">{{ t.delete }}</button>
-                        </div>
-                    </li>
+                    </div>
+                {% else %}
+                    <div class="empty-state">
+                        <i class="ri-flag-line empty-icon"></i>
+                        <p>{{ t.no_goals_yet }}</p>
+                    </div>
                 {% endfor %}
-            </ul>
+            </div>
         </div>
     </div>
 
+    <!-- 광고 모달 -->
     <div id="ad-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h2>{{ t.watching_ad }}</h2>
-            <p>{{ t.ad_reward_message }} <span id="ad-timer">5</span> {{ t.seconds }}.</p>
-            <div class="spinner"></div>
+            <div class="modal-body">
+                <div class="spinner"></div>
+                <p>{{ t.ad_reward_message }} <span id="ad-timer">5</span> {{ t.seconds }}</p>
+            </div>
         </div>
     </div>
 {% endblock %}
@@ -68,40 +181,52 @@
     const goalInput = document.getElementById('goal-input');
     const goalList = document.getElementById('goal-list');
     const ticketDisplay = document.getElementById('ticket-display');
-    const translations = {{ t | tojson | safe }};
-    const today = "{{ today }}";
+    const watchAdBtn = document.getElementById('watch-ad-btn');
+    const adModal = document.getElementById('ad-modal');
+    const adTimer = document.getElementById('ad-timer');
 
     function renderGoals(goals) {
-        goalList.innerHTML = '';
-        goals.forEach((goal, index) => {
-            const li = document.createElement('li');
+        goalList.innerHTML = goals.map((goal, index) => {
             const isCompleted = goal.status === 'Completed';
             const isOverdue = goal.deadline && goal.deadline < today && !isCompleted;
-
-            li.className = `${isCompleted ? 'completed' : ''} ${isOverdue ? 'overdue' : ''}`.trim();
-            li.dataset.id = index;
-
-            const recurringIcon = goal.type === 'recurring' ? '<span class="recurring-icon">🔄</span>' : '';
-            const deadlineText = goal.deadline ? `<span class="deadline-text"> (${translations.deadline}: ${goal.deadline})</span>` : '';
             
-            li.innerHTML = `
-                <div class="goal-text">
-                    ${recurringIcon}
-                    <span>${goal.text}</span>
-                    ${deadlineText}
-                </div>
-                <div class="goal-actions">
-                    <button class="toggle-btn" data-action="toggle">${translations.toggle}</button>
-                    <button class="delete-btn" data-action="delete">${translations.delete}</button>
+            return `
+                <div class="goal-card ${isCompleted ? 'completed' : ''} ${isOverdue ? 'overdue' : ''}" data-id="${index}">
+                    <div class="goal-header">
+                        <div class="goal-icon">
+                            ${goal.type === 'recurring' 
+                                ? '<i class="ri-refresh-line"></i>' 
+                                : '<i class="ri-flag-line"></i>'}
+                        </div>
+                        <div class="goal-info">
+                            <h3>${goal.text}</h3>
+                            ${goal.deadline ? `
+                                <p>
+                                    <i class="ri-calendar-line"></i>
+                                    ${goal.deadline}
+                                </p>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="goal-actions">
+                        <button class="glass-button toggle-btn" data-action="toggle">
+                            ${isCompleted 
+                                ? '<i class="ri-checkbox-circle-line"></i>' 
+                                : '<i class="ri-checkbox-blank-circle-line"></i>'}
+                        </button>
+                        <button class="glass-button delete-btn" data-action="delete">
+                            <i class="ri-delete-bin-line"></i>
+                        </button>
+                    </div>
                 </div>
             `;
-            goalList.appendChild(li);
-        });
+        }).join('');
     }
 
     addGoalForm.addEventListener('submit', function(event) {
         event.preventDefault();
         const formData = new FormData(this);
+        
         fetch("{{ url_for('add_goal') }}", {
             method: 'POST',
             body: formData
@@ -110,56 +235,64 @@
         .then(data => {
             if (data.success) {
                 renderGoals(data.goals);
-                goalInput.value = '';
-                document.querySelector('.deadline-input').value = '';
-                document.getElementById('is_recurring').checked = false;
+                this.reset();
             }
         });
     });
 
     goalList.addEventListener('click', function(event) {
-        const target = event.target;
-        if (target.tagName !== 'BUTTON') return;
-        const action = target.dataset.action;
-        const goalId = target.closest('li').dataset.id;
-        let url = '';
-        if (action === 'toggle') { url = `/toggle/${goalId}`; } 
-        else if (action === 'delete') { url = `/delete/${goalId}`; } 
-        else { return; }
-
-        fetch(url, { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    renderGoals(data.goals);
-                    if (data.tickets !== undefined) {
-                        ticketDisplay.textContent = data.tickets + ' 🎟️';
-                    }
+        const button = event.target.closest('button');
+        if (!button) return;
+        
+        const action = button.dataset.action;
+        const goalCard = button.closest('.goal-card');
+        const goalId = goalCard.dataset.id;
+        
+        fetch(`/${action}/${goalId}`, { 
+            method: 'POST' 
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderGoals(data.goals);
+                if (data.tickets !== undefined) {
+                    ticketDisplay.textContent = data.tickets;
                 }
-            });
+            }
+        });
     });
-
-    const watchAdBtn = document.getElementById('watch-ad-btn');
-    const adModal = document.getElementById('ad-modal');
-    const adTimer = document.getElementById('ad-timer');
 
     watchAdBtn.addEventListener('click', () => {
         adModal.classList.remove('hidden');
+        // 약간의 지연 후 show 클래스 추가
+        setTimeout(() => {
+            adModal.classList.add('show');
+        }, 10);
+
         let timeLeft = 5;
         adTimer.textContent = timeLeft;
+        
         const timerInterval = setInterval(() => {
             timeLeft--;
             adTimer.textContent = timeLeft;
+            
             if (timeLeft <= 0) {
                 clearInterval(timerInterval);
-                adModal.classList.add('hidden');
-                fetch('/get_ad_reward', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            ticketDisplay.textContent = data.tickets + ' 🎟️';
-                        }
-                    });
+                // 모달 닫기 애니메이션
+                adModal.classList.remove('show');
+                setTimeout(() => {
+                    adModal.classList.add('hidden');
+                }, 300);
+                
+                fetch('/get_ad_reward', { 
+                    method: 'POST' 
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        ticketDisplay.textContent = data.tickets;
+                    }
+                });
             }
         }, 1000);
     });

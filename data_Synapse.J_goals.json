@@ -1,17 +1,14 @@
 [
     {
         "text": "water",
-        "status": "Completed",
-        "completion_date": "2025-08-07"
+        "status": "In Progress"
     },
     {
-        "text": "run",
-        "status": "Completed",
-        "completion_date": "2025-08-06"
+        "text": "df",
+        "status": "In Progress"
     },
     {
-        "text": "study",
-        "status": "Completed",
-        "completion_date": "2025-08-06"
+        "text": "df",
+        "status": "In Progress"
     }
 ]

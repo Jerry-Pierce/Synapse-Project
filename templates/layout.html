@@ -1,79 +1,105 @@
-<!-- templates/layout.html -->
 <!DOCTYPE html>
 <html lang="{{ session.get('lang', 'en') }}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}{% endblock %} - {{ t.brand }}</title>
+    <meta name="theme-color" content="#4776E6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Remix Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="{{ theme if theme else 'light-theme' }}">
+<body>
+    <!-- 비디오 배경 -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline id="bgVideo">
+            <source src="{{ url_for('static', filename='videos/beach_bg.mp4') }}" type="video/mp4">
+        </video>
+    </div>
 
+    <!-- 헤더 -->
     <header>
         <nav>
-            <a href="{{ url_for('index') }}" class="brand">{{ t.brand }}</a>
-            <div class="user-info">
+            <a href="{{ url_for('index') }}" class="brand">
+                {{ t.brand }}
+            </a>
+            <div class="nav-links">
+                <a href="{{ url_for('dashboard') }}" class="nav-link">
+                    <i class="ri-dashboard-line"></i>
+                    {{ t.dashboard }}
+                </a>
+                <a href="{{ url_for('game_room') }}" class="nav-link">
+                    <i class="ri-gamepad-line"></i>
+                    {{ t.game_room }}
+                </a>
+                <a href="{{ url_for('shop') }}" class="nav-link">
+                    <i class="ri-store-line"></i>
+                    {{ t.shop }}
+                </a>
+                <a href="{{ url_for('profile') }}" class="nav-link">
+                    <i class="ri-user-line"></i>
+                    {{ t.profile }}
+                </a>
+            </div>
+            <div class="user-controls">
+                <div class="language-switcher">
+                    <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if session.get('lang', 'en') == 'en' }}">EN</a>
+                    <span>/</span>
+                    <a href="{{ url_for('set_language', lang='ko') }}" class="{{ 'active' if session.get('lang', 'en') == 'ko' }}">KO</a>
+                </div>
                 {% if session.username %}
-                    <span class="equipped-badge">{{ equipped_badge_icon }}</span>
-                    <span class="welcome-text">{{ t.welcome_message }}, {{ session.username }}!</span>
-                    
-                    <div class="language-switcher">
-                        <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if session.get('lang', 'en') == 'en' }}">EN</a>
-                        <span>/</span>
-                        <a href="{{ url_for('set_language', lang='ko') }}" class="{{ 'active' if session.get('lang', 'en') == 'ko' }}">KO</a>
-                    </div>
-
-                    <div class="dropdown">
-                        <button id="menu-btn" class="menu-btn">☰</button>
-                        <div id="dropdown-content" class="dropdown-content">
-                            <a href="{{ url_for('dashboard') }}">{{ t.dashboard }}</a>
-                            <a href="{{ url_for('leaderboard') }}">{{ t.leaderboard }}</a>
-                            <a href="{{ url_for('settings') }}">{{ t.settings }}</a>
-                            <a href="{{ url_for('logout') }}">{{ t.logout }}</a>
-                        </div>
-                    </div>
+                    <button class="glass-button">
+                        <i class="ri-user-line"></i>
+                        {{ session.username }}
+                    </button>
                 {% else %}
-                    <div class="language-switcher">
-                        <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if session.get('lang', 'en') == 'en' }}">EN</a>
-                        <span>/</span>
-                        <a href="{{ url_for('set_language', lang='ko') }}" class="{{ 'active' if session.get('lang', 'en') == 'ko' }}">KO</a>
-                    </div>
-                    <a href="{{ url_for('login') }}">{{ t.login }}</a>
-                    <a href="{{ url_for('register') }}">{{ t.register }}</a>
+                    <a href="{{ url_for('login') }}" class="glass-button">
+                        <i class="ri-login-box-line"></i>
+                        {{ t.login }}
+                    </a>
                 {% endif %}
             </div>
         </nav>
     </header>
 
-    <main>
+    <!-- 메인 컨텐츠 -->
+    <main class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 <div class="flash-messages">
-                {% for category, message in messages %}
-                    <div class="flash flash-{{ category }}">{{ message }}</div>
-                {% endfor %}
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }} glass-card fade-in">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
                 </div>
             {% endif %}
         {% endwith %}
+        
         {% block content %}{% endblock %}
     </main>
 
+    <!-- 스크립트 -->
     {% block scripts %}{% endblock %}
     <script>
-        const menuBtn = document.getElementById('menu-btn');
-        const dropdownContent = document.getElementById('dropdown-content');
-        if (menuBtn) {
-            menuBtn.addEventListener('click', function() {
-                dropdownContent.classList.toggle('show');
-            });
-        }
-        window.onclick = function(event) {
-            if (menuBtn && !menuBtn.contains(event.target) && !dropdownContent.contains(event.target)) {
-                if (dropdownContent.classList.contains('show')) {
-                    dropdownContent.classList.remove('show');
-                }
-            }
-        }
+        // 글로벌 변수
+        const translations = {{ t | tojson | safe }};
+        
+        // 플래시 메시지 자동 숨김
+        document.querySelectorAll('.flash').forEach(flash => {
+            setTimeout(() => {
+                flash.style.opacity = '0';
+                setTimeout(() => flash.remove(), 300);
+            }, 5000);
+        });
     </script>
 </body>
 </html>

@@ -29,7 +29,9 @@ DAILY_LOGIN_REWARD = 5
 game_world = {
     'players': {},  # {session_id: {username, x, y, level, exp, hp, last_seen}}
     'monsters': {},  # {monster_id: {x, y, hp, type}}
-    'items': {}  # {item_id: {x, y, type}}
+    'items': {},  # {item_id: {x, y, type}}
+    'duels': {},  # {duel_id: {player1_id, player2_id, status, arena_pos}}
+    'duel_requests': {}  # {request_id: {from_player, to_player, timestamp}}
 }
 
 with open('translations.json', 'r', encoding='utf-8') as f:
@@ -87,16 +89,49 @@ def save_user_player_data(player_data):
 # --- MMORPG 게임 함수들 ---
 def spawn_monsters():
     """몬스터 생성"""
-    for i in range(5):  # 5마리 몬스터 유지
-        if len(game_world['monsters']) < 5:
-            monster_id = str(uuid.uuid4())
-            game_world['monsters'][monster_id] = {
-                'x': random.randint(50, 750),
-                'y': random.randint(50, 550),
-                'hp': 30,
-                'max_hp': 30,
-                'type': random.choice(['👹', '👾', '🤖'])
-            }
+    # 일반 몬스터 5마리 유지
+    normal_monsters = [m for m in game_world['monsters'].values() if m.get('monster_type') != 'boss']
+    while len(normal_monsters) < 5:
+        monster_id = str(uuid.uuid4())
+        game_world['monsters'][monster_id] = {
+            'x': random.randint(50, 750),
+            'y': random.randint(50, 550),
+            'hp': 30,
+            'max_hp': 30,
+            'type': random.choice(['👹', '👾', '🤖']),
+            'monster_type': 'normal',
+            'target_player': None,  # 타겟 플레이어
+            'detection_range': 150,  # 감지 범위 (넓혀짐)
+            'attack_range': 40,  # 공격 범위
+            'move_speed': 4.0,  # 이동 속도 (더 빠르게)
+            'last_move': 0,  # 마지막 이동 시간
+            'last_attack': 0  # 마지막 공격 시간
+        }
+        normal_monsters.append(game_world['monsters'][monster_id])
+    
+    # 보스 몬스터 1마리 유지
+    boss_monsters = [m for m in game_world['monsters'].values() if m.get('monster_type') == 'boss']
+    if len(boss_monsters) < 1:
+        spawn_boss_monster()
+
+def spawn_boss_monster():
+    """보스 몬스터 생성"""
+    boss_id = str(uuid.uuid4())
+    game_world['monsters'][boss_id] = {
+        'x': random.randint(100, 700),
+        'y': random.randint(100, 500),
+        'hp': 150,
+        'max_hp': 150,
+        'type': '🐲',  # 드래곤 보스
+        'monster_type': 'boss',
+        'last_attack': 0,
+        'attack_pattern': 0,
+        'target_player': None,  # 타겟 플레이어
+        'detection_range': 200,  # 감지 범위 (더 넓게)
+        'attack_range': 60,  # 공격 범위
+        'move_speed': 5.0,  # 이동 속도 (플레이어보다 더 빠르게)
+        'last_move': 0  # 마지막 이동 시간
+    }
 
 def spawn_items():
     """아이템 생성"""
@@ -107,6 +142,161 @@ def spawn_items():
             'y': random.randint(50, 550),
             'type': random.choice(['💎', '⚔️', '🛡️', '💰'])
         }
+
+# --- 듀얼 시스템 함수들 ---
+def create_duel_request(from_player_id, to_player_id):
+    """듀얼 신청 생성"""
+    request_id = str(uuid.uuid4())
+    game_world['duel_requests'][request_id] = {
+        'from_player': from_player_id,
+        'to_player': to_player_id,
+        'timestamp': date.today().isoformat(),
+        'from_username': game_world['players'][from_player_id]['username'],
+        'to_username': game_world['players'][to_player_id]['username']
+    }
+    return request_id
+
+def accept_duel_request(request_id):
+    """듀얼 신청 수락"""
+    if request_id not in game_world['duel_requests']:
+        return False
+    
+    request = game_world['duel_requests'][request_id]
+    player1_id = request['from_player']
+    player2_id = request['to_player']
+    
+    # 듀얼 생성
+    duel_id = str(uuid.uuid4())
+    game_world['duels'][duel_id] = {
+        'player1_id': player1_id,
+        'player2_id': player2_id,
+        'status': 'active',
+        'arena_pos': {'x': 400, 'y': 300},  # 아레나 중앙
+        'start_time': date.today().isoformat()
+    }
+    
+    # 플레이어들을 아레나로 이동
+    game_world['players'][player1_id]['x'] = 350
+    game_world['players'][player1_id]['y'] = 300
+    game_world['players'][player1_id]['in_duel'] = duel_id
+    
+    game_world['players'][player2_id]['x'] = 450
+    game_world['players'][player2_id]['y'] = 300
+    game_world['players'][player2_id]['in_duel'] = duel_id
+    
+    # 요청 삭제
+    del game_world['duel_requests'][request_id]
+    return duel_id
+
+def end_duel(duel_id, winner_id=None):
+    """듀얼 종료"""
+    if duel_id not in game_world['duels']:
+        return False
+    
+    duel = game_world['duels'][duel_id]
+    player1_id = duel['player1_id']
+    player2_id = duel['player2_id']
+    
+    # 플레이어들 듀얼 상태 해제
+    if player1_id in game_world['players']:
+        game_world['players'][player1_id].pop('in_duel', None)
+        game_world['players'][player1_id]['hp'] = 100  # HP 회복
+    
+    if player2_id in game_world['players']:
+        game_world['players'][player2_id].pop('in_duel', None)
+        game_world['players'][player2_id]['hp'] = 100  # HP 회복
+    
+    # 듀얼 삭제
+    del game_world['duels'][duel_id]
+    return True
+
+# --- 몬스터 AI 시스템 ---
+def update_monster_ai():
+    """몬스터 AI 업데이트"""
+    import time
+    current_time = time.time()
+    
+    for monster_id, monster in game_world['monsters'].items():
+        # 가장 가까운 플레이어 찾기
+        closest_player = None
+        closest_distance = float('inf')
+        
+        for player_id, player in game_world['players'].items():
+            # 듀얼 중인 플레이어는 제외
+            if player.get('in_duel'):
+                continue
+                
+            distance = ((monster['x'] - player['x']) ** 2 + (monster['y'] - player['y']) ** 2) ** 0.5
+            
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_player = {'id': player_id, 'data': player}
+        
+        # 감지 범위 내에 플레이어가 있는지 확인
+        if closest_player and closest_distance <= monster['detection_range']:
+            monster['target_player'] = closest_player['id']
+            
+            # 공격 범위 내라면 공격
+            if closest_distance <= monster['attack_range']:
+                if current_time - monster.get('last_attack', 0) > 2.0:  # 2초 쿨다운
+                    attack_player(monster_id, closest_player['id'])
+                    monster['last_attack'] = current_time
+            else:
+                # 추적 이동
+                if current_time - monster.get('last_move', 0) > 0.016:  # 약 60fps로 이동 (매우 부드럽게)
+                    move_monster_towards_player(monster, closest_player['data'])
+                    monster['last_move'] = current_time
+        else:
+            # 타겟 해제
+            monster['target_player'] = None
+
+def move_monster_towards_player(monster, player):
+    """몬스터가 플레이어 쪽으로 이동"""
+    dx = player['x'] - monster['x']
+    dy = player['y'] - monster['y']
+    
+    # 정규화
+    distance = (dx ** 2 + dy ** 2) ** 0.5
+    if distance > 0:
+        dx /= distance
+        dy /= distance
+        
+        # 이동 (프레임당 이동량을 작게 하여 부드럽게)
+        frame_speed = monster['move_speed'] * 0.3  # 프레임당 실제 이동량
+        monster['x'] += dx * frame_speed
+        monster['y'] += dy * frame_speed
+        
+        # 경계 체크
+        monster['x'] = max(25, min(775, monster['x']))
+        monster['y'] = max(25, min(575, monster['y']))
+
+def attack_player(monster_id, player_id):
+    """몬스터가 플레이어를 공격"""
+    if monster_id not in game_world['monsters'] or player_id not in game_world['players']:
+        return
+    
+    monster = game_world['monsters'][monster_id]
+    player = game_world['players'][player_id]
+    
+    # 데미지 계산
+    if monster.get('monster_type') == 'boss':
+        damage = random.randint(8, 15)
+    else:
+        damage = random.randint(3, 8)
+    
+    # 플레이어 HP 감소
+    player['hp'] -= damage
+    if player['hp'] < 0:
+        player['hp'] = 0
+    
+    # 몬스터 공격 이벤트 발생
+    socketio.emit('player_damaged_by_monster', {
+        'player_id': player_id,
+        'monster_id': monster_id,
+        'monster_type': monster['type'],
+        'damage': damage,
+        'hp': player['hp']
+    }, room='game_world')
 
 # 게임 초기화
 spawn_monsters()
@@ -231,7 +421,49 @@ def profile():
     if not common_data or 'username' not in session: return redirect(url_for('login'))
     player_data = common_data['player_data']
     owned_badges = {item_id: SHOP_ITEMS[item_id] for item_id in player_data['items'] if 'Badge' in SHOP_ITEMS[item_id]['name']}
-    return render_template('profile.html', player=player_data, badges=owned_badges, **common_data)
+    
+    # 활동 내역 생성
+    activities = [
+        {
+            'icon': 'star',
+            'description': f'Earned {player_data["score"]} total points',
+            'time': 'All time'
+        },
+        {
+            'icon': 'ticket',
+            'description': f'Collected {player_data["tickets"]} tickets',
+            'time': 'All time'
+        },
+        {
+            'icon': 'sword',
+            'description': f'Reached level {player_data["level"]}',
+            'time': 'Current'
+        }
+    ]
+    
+    # 통계 계산
+    goals = load_user_goals()
+    total_goals = len(goals)
+    completed_goals = len([g for g in goals if g['status'] == 'Completed'])
+    completion_rate = int((completed_goals / total_goals) * 100) if total_goals > 0 else 0
+    
+    stats = {
+        'score': player_data['score'],
+        'tickets': player_data['tickets'],
+        'total_goals': total_goals,
+        'completed_goals': completed_goals,
+        'completion_rate': completion_rate
+    }
+    
+    # 가입일 추가
+    player_data['join_date'] = player_data.get('join_date', 'Unknown')
+    
+    return render_template('profile.html', 
+                         player=player_data,
+                         badges=owned_badges,
+                         activities=activities,
+                         stats=stats,
+                         **common_data)
 
 @app.route('/guess_the_number')
 def guess_the_number():
@@ -288,6 +520,75 @@ def dashboard():
                 completed_on_day += 1
         chart_data.append(completed_on_day)
     return render_template('dashboard.html', stats=stats, chart_labels=chart_labels, chart_data=chart_data, **common_data)
+
+@app.route('/calendar')
+def calendar():
+    common_data = get_common_render_data()
+    if not common_data or 'username' not in session: return redirect(url_for('login'))
+    return render_template('calendar.html', **common_data)
+
+@app.route('/get_calendar_events')
+def get_calendar_events():
+    if 'username' not in session:
+        return jsonify([])
+    try:
+        goals = load_user_goals()
+        events = []
+        for i, goal in enumerate(goals):
+            if 'deadline' in goal:
+                events.append({
+                    'id': str(i),
+                    'title': goal['text'],
+                    'start': goal['deadline'],
+                    'backgroundColor': '#28a745' if goal['status'] == 'Completed' else '#007bff',
+                    'allDay': True
+                })
+        print(f"Sending {len(events)} events")  # 디버깅용 로그
+        return jsonify(events)
+    except Exception as e:
+        print(f"Error in get_calendar_events: {str(e)}")  # 디버깅용 로그
+        return jsonify([])
+
+@app.route('/add_calendar_goal', methods=['POST'])
+def add_calendar_goal():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    data = request.get_json()
+    goals = load_user_goals()
+    new_goal = {
+        'text': data['title'],
+        'status': 'In Progress',
+        'deadline': data['date']
+    }
+    if data['isRecurring']:
+        new_goal['type'] = 'recurring'
+        new_goal['last_completed'] = None
+    goals.append(new_goal)
+    save_user_goals(goals)
+    return jsonify({
+        'success': True,
+        'goal': {
+            'id': str(len(goals) - 1),
+            'title': data['title'],
+            'date': data['date']
+        }
+    })
+
+@app.route('/toggle_calendar_goal/<goal_id>', methods=['POST'])
+def toggle_calendar_goal(goal_id):
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    goals = load_user_goals()
+    goal_id = int(goal_id)
+    if 0 <= goal_id < len(goals):
+        goal = goals[goal_id]
+        goal['status'] = 'Completed' if goal['status'] == 'In Progress' else 'In Progress'
+        save_user_goals(goals)
+        return jsonify({
+            'success': True,
+            'completed': goal['status'] == 'Completed'
+        })
+    return jsonify({'success': False, 'error': 'Goal not found'})
 
 @app.route('/settings')
 def settings():
@@ -513,14 +814,21 @@ def on_attack_monster(data):
         monster = game_world['monsters'][monster_id]
         player = game_world['players'][session_id]
         
-        # 몬스터 데미지
-        damage = random.randint(5, 15)
+        # 몬스터 데미지 (보스는 더 적은 데미지)
+        if monster.get('monster_type') == 'boss':
+            damage = random.randint(3, 8)  # 보스는 더 강함
+        else:
+            damage = random.randint(5, 15)
         monster['hp'] -= damage
         
         if monster['hp'] <= 0:
-            # 몬스터 처치 - 경험치와 점수 획득
-            exp_gained = random.randint(15, 25)
-            score_gained = random.randint(3, 8)
+            # 몬스터 처치 - 경험치와 점수 획득 (보스는 더 많은 보상)
+            if monster.get('monster_type') == 'boss':
+                exp_gained = random.randint(50, 75)  # 보스 보상
+                score_gained = random.randint(20, 30)
+            else:
+                exp_gained = random.randint(15, 25)
+                score_gained = random.randint(3, 8)
             
             player['exp'] += exp_gained
             
@@ -618,6 +926,196 @@ def on_chat_message(data):
             'username': player['username'],
             'message': data['message']
         }, room='game_world')
+
+# --- 듀얼 시스템 웹소켓 이벤트들 ---
+@socketio.on('request_duel')
+def on_request_duel(data):
+    session_id = request.sid
+    target_username = data['target_username']
+    
+    if session_id not in game_world['players']:
+        return
+    
+    # 대상 플레이어 찾기
+    target_player_id = None
+    for player_id, player in game_world['players'].items():
+        if player['username'] == target_username:
+            target_player_id = player_id
+            break
+    
+    if not target_player_id:
+        emit('duel_error', {'message': '플레이어를 찾을 수 없습니다.'})
+        return
+    
+    if target_player_id == session_id:
+        emit('duel_error', {'message': '자신에게는 듀얼 신청할 수 없습니다.'})
+        return
+    
+    # 이미 듀얼 중인지 확인
+    if game_world['players'][session_id].get('in_duel'):
+        emit('duel_error', {'message': '이미 듀얼 중입니다.'})
+        return
+    
+    if game_world['players'][target_player_id].get('in_duel'):
+        emit('duel_error', {'message': '상대방이 이미 듀얼 중입니다.'})
+        return
+    
+    # 듀얼 요청 생성
+    request_id = create_duel_request(session_id, target_player_id)
+    
+    # 신청자에게 알림
+    emit('duel_request_sent', {
+        'target_username': target_username,
+        'request_id': request_id
+    })
+    
+    # 대상자에게 알림
+    emit('duel_request_received', {
+        'from_username': game_world['players'][session_id]['username'],
+        'request_id': request_id
+    }, room=target_player_id)
+
+@socketio.on('accept_duel')
+def on_accept_duel(data):
+    session_id = request.sid
+    request_id = data['request_id']
+    
+    if session_id not in game_world['players']:
+        return
+    
+    if request_id not in game_world['duel_requests']:
+        emit('duel_error', {'message': '듀얼 요청을 찾을 수 없습니다.'})
+        return
+    
+    request = game_world['duel_requests'][request_id]
+    if request['to_player'] != session_id:
+        emit('duel_error', {'message': '권한이 없습니다.'})
+        return
+    
+    # 듀얼 시작
+    duel_id = accept_duel_request(request_id)
+    if duel_id:
+        # 양쪽 플레이어에게 듀얼 시작 알림
+        emit('duel_started', {
+            'duel_id': duel_id,
+            'opponent': game_world['players'][request['from_player']]['username']
+        }, room=session_id)
+        
+        emit('duel_started', {
+            'duel_id': duel_id,
+            'opponent': game_world['players'][session_id]['username']
+        }, room=request['from_player'])
+        
+        # 모든 플레이어에게 게임 상태 업데이트
+        emit('game_state', {
+            'players': game_world['players'],
+            'monsters': game_world['monsters'],
+            'items': game_world['items'],
+            'duels': game_world['duels']
+        }, room='game_world')
+
+@socketio.on('decline_duel')
+def on_decline_duel(data):
+    session_id = request.sid
+    request_id = data['request_id']
+    
+    if request_id not in game_world['duel_requests']:
+        return
+    
+    request = game_world['duel_requests'][request_id]
+    if request['to_player'] != session_id:
+        return
+    
+    # 신청자에게 거절 알림
+    emit('duel_declined', {
+        'from_username': game_world['players'][session_id]['username']
+    }, room=request['from_player'])
+    
+    # 요청 삭제
+    del game_world['duel_requests'][request_id]
+
+@socketio.on('attack_player')
+def on_attack_player(data):
+    session_id = request.sid
+    target_player_id = data['target_player_id']
+    
+    if session_id not in game_world['players'] or target_player_id not in game_world['players']:
+        return
+    
+    attacker = game_world['players'][session_id]
+    target = game_world['players'][target_player_id]
+    
+    # 듀얼 중인지 확인
+    if not attacker.get('in_duel') or attacker.get('in_duel') != target.get('in_duel'):
+        emit('duel_error', {'message': '듀얼 중이 아닙니다.'})
+        return
+    
+    # 데미지 계산
+    damage = random.randint(15, 25)
+    target['hp'] -= damage
+    
+    if target['hp'] <= 0:
+        target['hp'] = 0
+        # 듀얼 종료
+        duel_id = attacker['in_duel']
+        end_duel(duel_id, session_id)
+        
+        # 승리/패배 알림
+        emit('duel_ended', {
+            'winner': attacker['username'],
+            'loser': target['username'],
+            'result': 'victory'
+        }, room=session_id)
+        
+        emit('duel_ended', {
+            'winner': attacker['username'],
+            'loser': target['username'],
+            'result': 'defeat'
+        }, room=target_player_id)
+        
+        # 승리 보상
+        if 'username' in session:
+            player_data = load_user_player_data()
+            player_data['score'] += 50  # 듀얼 승리 보상
+            save_user_player_data(player_data)
+    else:
+        # 데미지 알림
+        emit('player_damaged', {
+            'attacker': attacker['username'],
+            'target': target['username'],
+            'damage': damage,
+            'hp': target['hp']
+        }, room='game_world')
+    
+    # 게임 상태 업데이트
+    emit('game_state', {
+        'players': game_world['players'],
+        'monsters': game_world['monsters'],
+        'items': game_world['items'],
+        'duels': game_world['duels']
+            }, room='game_world')
+
+# --- 몬스터 AI 업데이트 소켓 이벤트 ---
+@socketio.on('monster_ai_update')
+def on_monster_ai_update():
+    update_monster_ai()
+    
+    # 모든 플레이어에게 업데이트된 게임 상태 전송
+    emit('game_state', {
+        'players': game_world['players'],
+        'monsters': game_world['monsters'],
+        'items': game_world['items'],
+        'duels': game_world['duels']
+    }, room='game_world')
+
+@socketio.on('player_damaged')
+def on_player_damaged(data):
+    # 플레이어가 몬스터에게 데미지를 받았을 때
+    emit('player_damaged_event', {
+        'player_id': data['player_id'],
+        'damage': data['damage'],
+        'hp': data['hp']
+    }, room='game_world')
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5001, debug=True)

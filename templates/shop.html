@@ -2,33 +2,76 @@
 {% extends "layout.html" %}
 {% block title %}{{ t.item_shop }}{% endblock %}
 {% block content %}
-    <div class="container">
-        <h1>{{ t.item_shop }}</h1>
-        <div class="nav-links">
-            <a href="{{ url_for('profile') }}" class="nav-link" style="background-color: #6f42c1;">{{ t.my_profile }} 👤</a>
-            <a href="{{ url_for('index') }}" class="nav-link">{{ t.back_to_goal_list }}</a>
-        </div>
-        <div class="player-stats">
-            <span>{{ t.my_score }}</span>
-            <span class="ticket-count" style="color: #28a745;">{{ player_score }} ✨</span>
+    <div class="container shop-layout">
+        <!-- 왼쪽 카테고리 메뉴 -->
+        <div class="shop-sidebar">
+            <div class="shop-header glass-card">
+                <div class="player-balance">
+                    <i class="ri-star-line"></i>
+                    <span>{{ player_score }}</span>
+                </div>
+            </div>
+            <div class="shop-categories glass-card">
+                <div class="section-header">
+                    <i class="ri-price-tag-3-line"></i>
+                    <h2>{{ t.categories }}</h2>
+                </div>
+                <div class="category-list">
+                    <a href="#" class="category-item active">
+                        <i class="ri-medal-2-line"></i>
+                        <span>{{ t.badges }}</span>
+                    </a>
+                    <a href="#" class="category-item">
+                        <i class="ri-emotion-line"></i>
+                        <span>{{ t.emotes }}</span>
+                    </a>
+                    <a href="#" class="category-item">
+                        <i class="ri-palette-line"></i>
+                        <span>{{ t.themes }}</span>
+                    </a>
+                </div>
+            </div>
         </div>
 
-        <div class="shop-grid">
-            {% for item_id, item_info in items.items() %}
-            <div class="shop-item">
-                <div class="item-icon">{{ item_info.icon }}</div>
-                <div class="item-name">{{ item_info.name }}</div>
-                <div class="item-price">{{ item_info.price }} Score</div>
-                
-                <form action="{{ url_for('buy_item', item_id=item_id) }}" method="POST">
-                    {% if item_id in player_items %}
-                        <button type="submit" class="buy-btn" disabled>{{ t.owned }}</button>
-                    {% else %}
-                        <button type="submit" class="buy-btn" {{ 'disabled' if player_score < item_info.price else '' }}>{{ t.buy }}</button>
-                    {% endif %}
-                </form>
+        <!-- 오른쪽 아이템 그리드 -->
+        <div class="shop-content">
+            <div class="shop-content-header glass-card">
+                <h1>{{ t.item_shop }}</h1>
+                <p class="subtitle">{{ t.shop_description }}</p>
             </div>
-            {% endfor %}
+
+            <div class="shop-items">
+                {% for item_id, item_info in items.items() %}
+                <div class="shop-item glass-card">
+                    <div class="item-preview">
+                        <div class="item-icon">
+                            <i class="ri-{{ item_info.icon_class }}-line"></i>
+                        </div>
+                    </div>
+                    <div class="item-info">
+                        <h3>{{ item_info.name }}</h3>
+                        <p>{{ item_info.description }}</p>
+                        <div class="item-price">
+                            <i class="ri-star-line"></i>
+                            <span>{{ item_info.price }}</span>
+                        </div>
+                    </div>
+                    <form action="{{ url_for('buy_item', item_id=item_id) }}" method="POST">
+                        {% if item_id in player_items %}
+                            <button type="submit" class="glass-button owned" disabled>
+                                <i class="ri-check-line"></i>
+                                {{ t.owned }}
+                            </button>
+                        {% else %}
+                            <button type="submit" class="glass-button" {{ 'disabled' if player_score < item_info.price }}>
+                                <i class="ri-shopping-cart-line"></i>
+                                {{ t.buy }}
+                            </button>
+                        {% endif %}
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 {% endblock %}

@@ -2,45 +2,110 @@
 {% extends "layout.html" %}
 {% block title %}{{ t.game_room }}{% endblock %}
 {% block content %}
-    <div class="container">
-        <h1>{{ t.game_room }}</h1>
-        <div class="nav-links">
-            <a href="{{ url_for('profile') }}" class="nav-link" style="background-color: #6f42c1;">{{ t.my_profile }} 👤</a>
-            <a href="{{ url_for('shop') }}" class="nav-link" style="background-color: #17a2b8;">{{ t.go_to_shop }} 🏪</a>
-            <a href="{{ url_for('index') }}" class="nav-link">{{ t.back_to_goal_list }}</a>
+    <div class="container grid-layout">
+        <!-- 헤더 섹션 -->
+        <div class="game-room-header">
+            <div class="header-content glass-card">
+                <div class="header-left">
+                    <h1>{{ t.game_room }}</h1>
+                    <p class="subtitle">Choose your adventure and earn rewards!</p>
+                </div>
+                <div class="player-stats">
+                    <div class="stat-item">
+                        <i class="ri-ticket-2-line"></i>
+                        <span>{{ tickets }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="ri-star-line"></i>
+                        <span>{{ player_data.score }}</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <div class="game-selection-grid">
-            <!-- 2D MMORPG 게임 카드 -->
-            <a href="{{ url_for('mmorpg_game') }}" class="game-card-link">
-                <div class="game-card">
-                    <h2>{{ t.mmorpg_game }}</h2>
-                    <p>{{ t.mmorpg_game_desc }}</p>
-                    <div class="game-icon">🏰</div>
-                    <div class="player-stats-mini">
-                        {{ t.level }}: {{ player_data.level }} | 
-                        {{ t.exp }}: {{ player_data.exp }} | 
-                        {{ t.hp }}: {{ player_data.hp }}/100
+
+        <!-- 메인 게임 섹션 -->
+        <div class="main-game-section">
+            <a href="{{ url_for('mmorpg_game') }}" class="featured-game glass-card">
+                <div class="game-preview">
+                    <div class="game-icon">
+                        <i class="ri-sword-line"></i>
+                    </div>
+                </div>
+                <div class="game-content">
+                    <div class="game-header">
+                        <div class="game-title">
+                            <h2>{{ t.mmorpg_game }}</h2>
+                            <span class="game-badge">Featured</span>
+                        </div>
+                        <p class="game-description">{{ t.mmorpg_game_desc }}</p>
+                    </div>
+                    <div class="game-stats">
+                        <div class="stat">
+                            <i class="ri-sword-line"></i>
+                            <span>Level {{ player_data.level }}</span>
+                        </div>
+                        <div class="stat">
+                            <i class="ri-heart-line"></i>
+                            <span>{{ player_data.hp }}/100 HP</span>
+                        </div>
+                    </div>
+                    <div class="game-footer">
+                        <span class="play-now">{{ t.enter_dungeon }}</span>
+                        <i class="ri-arrow-right-line"></i>
                     </div>
                 </div>
             </a>
+        </div>
 
-            <!-- 숫자 맞추기 게임 카드 -->
-            <a href="{{ url_for('guess_the_number') }}" class="game-card-link">
-                <div class="game-card">
-                    <h2>{{ t.guess_the_number }}</h2>
-                    <p>{{ t.guess_the_number_desc }}</p>
-                    <div class="game-icon">🎲</div>
-                </div>
+        <!-- 미니 게임 섹션 -->
+        <div class="mini-games-section">
+            <div class="section-header">
+                <i class="ri-gamepad-line"></i>
+                <h2>{{ t.mini_games }}</h2>
+            </div>
+            <div class="mini-games-grid">
+                <a href="{{ url_for('guess_the_number') }}" class="mini-game glass-card">
+                    <div class="game-icon">
+                        <i class="ri-dice-line"></i>
+                    </div>
+                    <div class="game-info">
+                        <h3>{{ t.guess_the_number }}</h3>
+                        <p>{{ t.guess_the_number_desc }}</p>
+                        <div class="game-footer">
+                            <span class="ticket-cost">1 <i class="ri-ticket-2-line"></i></span>
+                            <i class="ri-arrow-right-line"></i>
+                        </div>
+                    </div>
+                </a>
+
+                <a href="{{ url_for('memory_game') }}" class="mini-game glass-card">
+                    <div class="game-icon">
+                        <i class="ri-brain-line"></i>
+                    </div>
+                    <div class="game-info">
+                        <h3>{{ t.memory_cards }}</h3>
+                        <p>{{ t.memory_cards_desc }}</p>
+                        <div class="game-footer">
+                            <span class="ticket-cost">2 <i class="ri-ticket-2-line"></i></span>
+                            <i class="ri-arrow-right-line"></i>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        <div class="action-buttons glass-card">
+            <a href="{{ url_for('profile') }}" class="glass-button">
+                <i class="ri-user-line"></i>
+                {{ t.my_profile }}
             </a>
-
-            <!-- 기억력 카드 게임 카드 -->
-            <a href="{{ url_for('memory_game') }}" class="game-card-link">
-                <div class="game-card">
-                    <h2>{{ t.memory_cards }}</h2>
-                    <p>{{ t.memory_cards_desc }}</p>
-                    <div class="game-icon">🧠</div>
-                </div>
+            <a href="{{ url_for('shop') }}" class="glass-button">
+                <i class="ri-store-line"></i>
+                {{ t.go_to_shop }}
+            </a>
+            <a href="{{ url_for('index') }}" class="glass-button">
+                <i class="ri-arrow-left-line"></i>
+                {{ t.back_to_goal_list }}
             </a>
         </div>
     </div>

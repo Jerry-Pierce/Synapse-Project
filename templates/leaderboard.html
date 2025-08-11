@@ -3,32 +3,81 @@
 {% block title %}{{ t.leaderboard }}{% endblock %}
 {% block content %}
     <div class="container">
-        <h1>{{ t.hall_of_fame }}</h1>
-        <p>{{ t.leaderboard_desc }}</p>
+        <div class="dashboard-header glass-card">
+            <h1>{{ t.hall_of_fame }}</h1>
+            <p class="subtitle">{{ t.leaderboard_desc }}</p>
+        </div>
 
-        <div class="leaderboard">
-            <table>
-                <thead>
-                    <tr>
-                        <th>{{ t.rank }}</th>
-                        <th>{{ t.player }}</th>
-                        <th>{{ t.score }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for player in players %}
-                        <tr class="{{ 'current-user' if player.username == session.username }}">
-                            <td>{{ loop.index }}</td>
-                            <td>{{ player.username }}</td>
-                            <td>{{ player.score }} ✨</td>
-                        </tr>
-                    {% else %}
+        <div class="leaderboard-section glass-card">
+            <div class="section-header">
+                <i class="ri-trophy-line"></i>
+                <h2>{{ t.top_players }}</h2>
+            </div>
+            
+            <div class="leaderboard-grid">
+                {% for player in players[:3] %}
+                    <div class="leaderboard-card glass-card {{ 'current-user' if player.username == session.username }}">
+                        <div class="rank-badge">{{ loop.index }}</div>
+                        <div class="player-info">
+                            <div class="player-avatar">
+                                <i class="ri-user-star-line"></i>
+                            </div>
+                            <h3>{{ player.username }}</h3>
+                            <div class="player-score">
+                                <i class="ri-star-line"></i>
+                                <span>{{ player.score }}</span>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <div class="leaderboard-table">
+                <table>
+                    <thead>
                         <tr>
-                            <td colspan="3">{{ t.no_players_yet }}</td>
+                            <th>{{ t.rank }}</th>
+                            <th>{{ t.player }}</th>
+                            <th>{{ t.score }}</th>
                         </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {% for player in players[3:] %}
+                            <tr class="{{ 'current-user' if player.username == session.username }}">
+                                <td>{{ loop.index + 3 }}</td>
+                                <td>
+                                    <div class="table-player-info">
+                                        <i class="ri-user-line"></i>
+                                        <span>{{ player.username }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="table-score">
+                                        <i class="ri-star-line"></i>
+                                        <span>{{ player.score }}</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            {% if not players %}
+                                <tr>
+                                    <td colspan="3" class="empty-state">
+                                        <i class="ri-emotion-sad-line"></i>
+                                        <p>{{ t.no_players_yet }}</p>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <a href="{{ url_for('index') }}" class="glass-button">
+                <i class="ri-arrow-left-line"></i>
+                {{ t.back_to_goal_list }}
+            </a>
         </div>
     </div>
 {% endblock %}

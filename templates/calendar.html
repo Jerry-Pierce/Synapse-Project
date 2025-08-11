@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+{% block title %}{{ t.calendar }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="calendar-container">
+        <div id="calendar"></div>
+    </div>
+    
+    <!-- 목표 추가 모달 -->
+    <div id="goalModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>{{ t.add_goal }}</h2>
+            <form id="addGoalForm">
+                <input type="text" id="goalTitle" placeholder="{{ t.enter_goal_title }}" required>
+                <input type="date" id="goalDate" required>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="isRecurring">
+                    <label for="isRecurring">{{ t.daily_goal }} 🔄</label>
+                </div>
+                <button type="submit">{{ t.save }}</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        themeSystem: 'bootstrap',
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,dayGridWeek'
+        },
+        buttonText: {
+            today: 'Today',
+            month: 'Month',
+            week: 'Week'
+        },
+        buttonIcons: {
+            prev: 'bi-arrow-left-circle-fill',
+            next: 'bi-arrow-right-circle-fill',
+            prevYear: 'bi-chevron-double-left',
+            nextYear: 'bi-chevron-double-right'
+        },
+        editable: true,
+        selectable: true,
+        selectMirror: true,
+        dayMaxEvents: true,
+        locale: '{{ session.get("lang", "en") }}',
+        events: {
+            url: '/get_calendar_events',
+            method: 'GET',
+            failure: function() {
+                alert('이벤트를 불러오는데 실패했습니다.');
+            }
+        },
+        select: function(info) {
+            // 날짜 선택시 모달 표시
+            document.getElementById('goalModal').style.display = 'block';
+            document.getElementById('goalDate').value = info.startStr;
+        },
+        eventClick: function(info) {
+            // 이벤트 클릭시 처리
+            if (confirm('이 목표를 완료하시겠습니까?')) {
+                fetch('/toggle_calendar_goal/' + info.event.id, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        info.event.setProp('backgroundColor', data.completed ? '#28a745' : '#007bff');
+                    }
+                });
+            }
+        },
+        eventDidMount: function(info) {
+            console.log('Event mounted:', info.event.title);
+        }
+    });
+    
+    calendar.render();
+
+    // 모달 닫기 버튼
+    document.querySelector('.close').onclick = function() {
+        document.getElementById('goalModal').style.display = 'none';
+    }
+
+    // 모달 외부 클릭시 닫기
+    window.onclick = function(event) {
+        var modal = document.getElementById('goalModal');
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // 목표 추가 폼 제출
+    document.getElementById('addGoalForm').onsubmit = function(e) {
+        e.preventDefault();
+        fetch('/add_calendar_goal', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: document.getElementById('goalTitle').value,
+                date: document.getElementById('goalDate').value,
+                isRecurring: document.getElementById('isRecurring').checked
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                calendar.addEvent({
+                    title: data.goal.title,
+                    start: data.goal.date,
+                    backgroundColor: '#007bff',
+                    id: data.goal.id,
+                    allDay: true
+                });
+                document.getElementById('goalModal').style.display = 'none';
+                document.getElementById('addGoalForm').reset();
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
